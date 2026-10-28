@@ -4,18 +4,18 @@ Two artefacts are attached to every tagged GitHub Release:
 
 | Artefact | How it is built | Status |
 |---|---|---|
-| `parley-<version>-arm64.apk` | Signed release APK, built on Linux in the Android builder image (`app/android-builder.Dockerfile`), signed with the keystore from repository secrets | Signing secrets **PENDING-USER** (falls back to a debug APK) |
+| `parley-<version>-arm64.apk` | Signed release APK, built on Linux in the Android builder image (`app/android-builder.Dockerfile`), signed with the keystore from repository secrets | Signing secrets configured 2026-10-28 (falls back to a debug APK if they are absent) |
 | `parley-<version>-unsigned.ipa` | Unsigned IPA, built on a macOS runner with `tauri ios build --no-sign` | Ready; install via AltStore/SideStore |
 
 Both are produced by `.github/workflows/release.yml`.
 
-## PENDING-USER checklist
+## Checklist
 
-Nothing below has been done by the agent. No secret, keystore or certificate is in the repository.
+No secret, keystore or certificate is in the repository.
 
-- [ ] **PENDING-USER**: create the Android release keystore and the four `ANDROID_*` repository secrets (procedure below).
+- [x] Android release keystore and the four `ANDROID_*` repository secrets created 2026-10-28. The keystore and its password are held outside the repository (maintainer's `%USERPROFILE%\.parley-release\`); back them up.
 - [ ] **PENDING-USER**: create an Apple Developer account and the four `APPLE_*` secrets, only if a signed IPA is ever wanted (procedure below). Not required for the unsigned IPA.
-- [ ] **PENDING-USER**: push the first version tag. This is human-gated: the agent must never push a tag or a release.
+- [x] Tag `v0.0.1` and the GitHub Release published 2026-10-28, with explicit user authorisation. Pushing a tag is otherwise human-gated.
 - [ ] **PENDING-USER**: install the artefacts on a real phone (APK via `adb`/sideload, IPA via AltStore/SideStore).
 
 Until the Android secrets exist the workflow still runs: it builds a **debug-signed** APK named `parley-<version>-arm64-debug.apk`, so a release is never blocked by missing secrets. Debug and release APKs have different signing keys — uninstall one before installing the other.
@@ -25,7 +25,7 @@ Until the Android secrets exist the workflow still runs: it builds a **debug-sig
 - Push a tag matching `v*` → build both artefacts, then create/update the GitHub Release.
 - Actions → **Release** → *Run workflow* → build both artefacts only. The release job is skipped because the ref is a branch. Use this as a dry run.
 
-## Android signing key — PENDING-USER
+## Android signing key
 
 The key is **user-held**. Generate it once, back it up offline (password manager or encrypted drive), and never commit it. `tmp/`, `.env` and `node_modules/` are gitignored; still, do not put a real keystore anywhere inside the repository.
 

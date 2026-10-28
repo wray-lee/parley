@@ -161,6 +161,12 @@ jobs:
         working-directory: app
         run: |
           set -euo pipefail
+          # Actions sets unset job secrets to an empty string, and the Tauri CLI
+          # rejects an empty development team even for --no-sign builds. Remove
+          # the variable entirely when no Apple team is configured.
+          if [ -z "${APPLE_DEVELOPMENT_TEAM:-}" ]; then
+            unset APPLE_DEVELOPMENT_TEAM
+          fi
           # The iOS Xcode project is generated, not committed (unlike gen/android).
           if [ ! -d src-tauri/gen/apple ]; then
             bunx tauri ios init --ci
@@ -211,7 +217,7 @@ jobs:
           notes=$(cat <<EOF
           Parley $TAG
 
-          - Android: signed APK (debug-signed until the release keystore secrets are configured). Install it directly on the phone.
+          - Android: signed arm64 APK (debug-signed if the repository signing secrets are not configured). Install it directly on the phone.
           - iOS: IPA (unsigned in the default channel), install it with AltStore or SideStore, which re-sign it with your Apple ID.
 
           Sideloading instructions: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$TAG/docs/release.md#sideloading
