@@ -1,0 +1,19 @@
+{
+  "identifier": "default",
+  "description": "Shell default: native networking for the Device Host adapter. HTTPS Provider hosts are allowed; plain HTTP only for loopback (local Ollama-style endpoints).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://*" },
+        { "url": "http://localhost:*" },
+        { "url": "http://127.0.0.1:*" }
+      ]
+    },
+    "websocket:default",
+    "tts:default",
+    "secure-keystore:default"
+  ]
+}

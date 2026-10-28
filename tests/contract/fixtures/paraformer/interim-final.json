@@ -1,0 +1,102 @@
+{
+  "provider": "paraformer",
+  "case": "interim-final",
+  "recorded": "Format-faithful DashScope Paraformer real-time frames rebuilt from the Alibaba Cloud Model Studio WebSocket docs (help.aliyun.com/en/model-studio/paraformer-client-events and /paraformer-server-events, fetched 2026-10-28). No DASHSCOPE_API_KEY was available to capture a live session; replace with a stripped live capture once a key exists.",
+  "direction": { "src": "ja", "tgt": "zh" },
+  "options": {
+    "model": "paraformer-realtime-v2",
+    "url": "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+  },
+  "auth": { "key": "<redacted>" },
+  "frames": [
+    {
+      "atMs": 20,
+      "data": {
+        "header": { "task_id": "<task-id>", "event": "task-started", "attributes": {} },
+        "payload": {}
+      }
+    },
+    {
+      "atMs": 500,
+      "data": {
+        "header": { "task_id": "<task-id>", "event": "result-generated", "attributes": {} },
+        "payload": {
+          "output": {
+            "sentence": {
+              "begin_time": 200,
+              "end_time": null,
+              "text": "今日は",
+              "heartbeat": false,
+              "sentence_end": false,
+              "words": [
+                { "begin_time": 200, "end_time": 420, "text": "今日", "punctuation": "" },
+                { "begin_time": 420, "end_time": 560, "text": "は", "punctuation": "" }
+              ]
+            },
+            "usage": null
+          }
+        }
+      },
+      "events": [
+        { "type": "partial", "text": "今日は", "startMs": 200, "endMs": 560 }
+      ]
+    },
+    {
+      "atMs": 1000,
+      "data": {
+        "header": { "task_id": "<task-id>", "event": "result-generated", "attributes": {} },
+        "payload": {
+          "output": {
+            "sentence": {
+              "begin_time": 200,
+              "end_time": null,
+              "text": "今日はいい天気です",
+              "heartbeat": false,
+              "sentence_end": false,
+              "words": [
+                { "begin_time": 200, "end_time": 420, "text": "今日", "punctuation": "" },
+                { "begin_time": 420, "end_time": 560, "text": "は", "punctuation": "" },
+                { "begin_time": 560, "end_time": 850, "text": "いい", "punctuation": "" },
+                { "begin_time": 850, "end_time": 1200, "text": "天気", "punctuation": "" },
+                { "begin_time": 1200, "end_time": 1500, "text": "です", "punctuation": "" }
+              ]
+            },
+            "usage": null
+          }
+        }
+      },
+      "events": [
+        { "type": "partial", "text": "今日はいい天気です", "startMs": 200, "endMs": 1500 },
+        { "type": "stable", "text": "今日は", "startMs": 200, "endMs": 560 }
+      ]
+    },
+    {
+      "atMs": 1800,
+      "data": {
+        "header": { "task_id": "<task-id>", "event": "result-generated", "attributes": {} },
+        "payload": {
+          "output": {
+            "sentence": {
+              "begin_time": 200,
+              "end_time": 1600,
+              "text": "今日はいい天気です。",
+              "heartbeat": false,
+              "sentence_end": true,
+              "words": [
+                { "begin_time": 200, "end_time": 420, "text": "今日", "punctuation": "" },
+                { "begin_time": 420, "end_time": 560, "text": "は", "punctuation": "" },
+                { "begin_time": 560, "end_time": 850, "text": "いい", "punctuation": "" },
+                { "begin_time": 850, "end_time": 1200, "text": "天気", "punctuation": "" },
+                { "begin_time": 1200, "end_time": 1500, "text": "です", "punctuation": "。" }
+              ]
+            },
+            "usage": { "duration": 2 }
+          }
+        }
+      },
+      "events": [
+        { "type": "stable", "text": "いい天気です。", "startMs": 560, "endMs": 1500 }
+      ]
+    }
+  ]
+}

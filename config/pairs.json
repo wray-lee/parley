@@ -1,0 +1,4 @@
+{
+  "zh->ja": { "clauseLength": 12, "unit": "char" },
+  "ja->zh": { "clauseLength": 12, "unit": "char" }
+}

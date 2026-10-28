@@ -1,0 +1,36 @@
+{
+  "preset": "ollama",
+  "recorded": "Format-faithful OpenAI-compatible SSE (Ollama /v1); local endpoint needs no key.",
+  "input": {
+    "prompt": "Translate the user's Chinese into Japanese. Output only the translation.",
+    "context": [],
+    "text": "谢谢。"
+  },
+  "request": {
+    "url": "http://localhost:11434/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json"
+    },
+    "body": {
+      "model": "llama3.1",
+      "stream": true,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Translate the user's Chinese into Japanese. Output only the translation."
+        },
+        {
+          "role": "user",
+          "content": "[已译上下文]\n[新段落]\n谢谢。"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "content-type": "text/event-stream" },
+    "sse": "data: {\"id\":\"chatcmpl-ollama-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000002,\"model\":\"llama3.1\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-ollama-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000002,\"model\":\"llama3.1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"ありがとう\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-ollama-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000002,\"model\":\"llama3.1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"。\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-ollama-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000002,\"model\":\"llama3.1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+  },
+  "expected": "ありがとう。"
+}

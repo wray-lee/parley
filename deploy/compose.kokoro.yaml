@@ -1,0 +1,9 @@
+# Kokoro-FastAPI on its own. Point the server at it with
+# KOKORO_URL=http://localhost:8880 and TTS_PROVIDER=kokoro.
+#   docker compose -f deploy/compose.kokoro.yaml up -d
+services:
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
+    ports:
+      - "${KOKORO_PORT:-8880}:8880"
+    restart: unless-stopped

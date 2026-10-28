@@ -1,0 +1,37 @@
+{
+  "preset": "groq",
+  "recorded": "Format-faithful OpenAI-compatible SSE (Groq); replace with a live recording once a key is available.",
+  "input": {
+    "prompt": "Translate the user's Chinese into Japanese. Output only the translation.",
+    "context": [{ "src": "你好", "tgt": "こんにちは" }],
+    "text": "今天天气很好。"
+  },
+  "request": {
+    "url": "https://api.groq.com/openai/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "Bearer <redacted>"
+    },
+    "body": {
+      "model": "llama-3.3-70b-versatile",
+      "stream": true,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Translate the user's Chinese into Japanese. Output only the translation."
+        },
+        {
+          "role": "user",
+          "content": "[已译上下文]\n原文：你好\n译文：こんにちは\n[新段落]\n今天天气很好。"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "content-type": "text/event-stream" },
+    "sse": "data: {\"id\":\"chatcmpl-groq-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000000,\"model\":\"llama-3.3-70b-versatile\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-groq-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000000,\"model\":\"llama-3.3-70b-versatile\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"今日は\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-groq-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000000,\"model\":\"llama-3.3-70b-versatile\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"いい天気です。\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-groq-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000000,\"model\":\"llama-3.3-70b-versatile\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+  },
+  "expected": "今日はいい天気です。"
+}

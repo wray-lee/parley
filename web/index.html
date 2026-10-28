@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parley</title>
+<style>
+  :root { color-scheme: light dark; --line: #8884; --muted: #888; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; min-height: 100vh; }
+  header { display: flex; align-items: baseline; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 1.2rem; margin: 0; }
+  #status { color: var(--muted); font-size: .9rem; }
+  #demo-banner { padding: .6rem 1rem; background: #b45309; color: #fff; font-weight: 600; letter-spacing: .04em; }
+  #preset { font-size: .8rem; padding: .15rem .55rem; border: 1px solid #b45309; border-radius: 1rem; color: #b45309; }
+  main { flex: 1; display: flex; flex-direction: column; gap: .75rem; padding: 1rem; width: min(900px, 100%); margin: 0 auto; }
+  .controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+  label { display: inline-flex; gap: .35rem; align-items: center; }
+  button { font: inherit; padding: .45rem .9rem; border: 1px solid var(--line); border-radius: .4rem; background: transparent; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  #subtitles { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .6rem; overflow-y: auto; }
+  #subtitles li { border: 1px solid var(--line); border-radius: .5rem; padding: .6rem .75rem; }
+  .source { color: var(--muted); font-size: .95rem; }
+  .translation { font-size: 1.1rem; margin-top: .2rem; }
+  .latency { float: right; color: var(--muted); font-size: .75rem; }
+  #toasts { position: fixed; right: 1rem; bottom: 1rem; display: flex; flex-direction: column; gap: .5rem; max-width: 22rem; }
+  .toast { background: #991b1b; color: #fff; padding: .5rem .75rem; border-radius: .4rem; font-size: .9rem; }
+  #turns:empty, #cut-ring:empty, #hold:empty { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Parley</h1>
+  <span id="status">connecting</span>
+</header>
+<div id="demo-banner" hidden>DEMO — mock providers. This output is not a real translation.</div>
+<main>
+  <div class="controls">
+    <label>Mode
+      <select id="mode">
+        <option value="listen">Listen</option>
+        <option value="converse">Converse</option>
+      </select>
+    </label>
+    <label>Pair <select id="pair"></select></label>
+    <label>Packs <select id="packs" multiple size="1"></select></label>
+    <span id="preset" hidden></span>
+    <button id="start">Start</button>
+    <button id="stop" disabled>Stop</button>
+    <button id="mic">Mic</button>
+  </div>
+  <div class="controls">
+    <span id="cut-ring"></span>
+    <span id="hold"></span>
+    <span id="turns"></span>
+    <button id="ptt">Hold to talk</button>
+  </div>
+  <ol id="subtitles" aria-live="polite"></ol>
+</main>
+<div id="toasts"></div>
+<script type="module" src="/main.js"></script>
+</body>
+</html>

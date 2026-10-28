@@ -1,0 +1,5 @@
+.scratch/
+tmp/
+.env
+node_modules/
+.claude/

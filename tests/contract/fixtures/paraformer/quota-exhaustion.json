@@ -1,0 +1,30 @@
+{
+  "provider": "paraformer",
+  "case": "task-failed-quota",
+  "recorded": "task-failed frame with the documented Arrearage error code (Model Studio error codes page). Docs example, not a live capture.",
+  "direction": { "src": "zh", "tgt": "ja" },
+  "options": { "model": "paraformer-realtime-v2" },
+  "auth": { "key": "<redacted>" },
+  "frames": [
+    {
+      "atMs": 20,
+      "data": {
+        "header": { "task_id": "<task-id>", "event": "task-started", "attributes": {} },
+        "payload": {}
+      }
+    },
+    {
+      "atMs": 400,
+      "data": {
+        "header": {
+          "task_id": "<task-id>",
+          "event": "task-failed",
+          "error_code": "Arrearage",
+          "error_message": "Access denied, please make sure your account is in good standing.",
+          "attributes": {}
+        },
+        "payload": {}
+      }
+    }
+  ]
+}

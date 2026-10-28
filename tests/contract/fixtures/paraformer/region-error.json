@@ -1,0 +1,30 @@
+{
+  "provider": "paraformer",
+  "case": "task-failed-region",
+  "recorded": "task-failed frame showing a model that is unavailable in the configured region. The code/message follow the Model Studio task-failed shape (error_code/error_message); docs example, not a live capture.",
+  "direction": { "src": "ja", "tgt": "zh" },
+  "options": { "model": "paraformer-realtime-v2" },
+  "auth": { "key": "<redacted>" },
+  "frames": [
+    {
+      "atMs": 20,
+      "data": {
+        "header": { "task_id": "<task-id>", "event": "task-started", "attributes": {} },
+        "payload": {}
+      }
+    },
+    {
+      "atMs": 400,
+      "data": {
+        "header": {
+          "task_id": "<task-id>",
+          "event": "task-failed",
+          "error_code": "ModelNotFound",
+          "error_message": "The model paraformer-realtime-v2 is not available in this region.",
+          "attributes": {}
+        },
+        "payload": {}
+      }
+    }
+  ]
+}

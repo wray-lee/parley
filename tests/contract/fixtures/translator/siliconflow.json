@@ -1,0 +1,37 @@
+{
+  "preset": "siliconflow",
+  "recorded": "Format-faithful OpenAI-compatible SSE (SiliconFlow); replace with a live recording once a key is available.",
+  "input": {
+    "prompt": "Translate the user's Japanese into Chinese. Output only the translation.",
+    "context": [{ "src": "おはよう", "tgt": "早上好" }],
+    "text": "お元気ですか。"
+  },
+  "request": {
+    "url": "https://api.siliconflow.cn/v1/chat/completions",
+    "method": "POST",
+    "headers": {
+      "content-type": "application/json",
+      "authorization": "Bearer <redacted>"
+    },
+    "body": {
+      "model": "Qwen/Qwen2.5-7B-Instruct",
+      "stream": true,
+      "messages": [
+        {
+          "role": "system",
+          "content": "Translate the user's Japanese into Chinese. Output only the translation."
+        },
+        {
+          "role": "user",
+          "content": "[已译上下文]\n原文：おはよう\n译文：早上好\n[新段落]\nお元気ですか。"
+        }
+      ]
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "content-type": "text/event-stream" },
+    "sse": "data: {\"id\":\"chatcmpl-sf-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000001,\"model\":\"Qwen/Qwen2.5-7B-Instruct\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-sf-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000001,\"model\":\"Qwen/Qwen2.5-7B-Instruct\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"你好\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-sf-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000001,\"model\":\"Qwen/Qwen2.5-7B-Instruct\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"吗？\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-sf-1\",\"object\":\"chat.completion.chunk\",\"created\":1750000001,\"model\":\"Qwen/Qwen2.5-7B-Instruct\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+  },
+  "expected": "你好吗？"
+}

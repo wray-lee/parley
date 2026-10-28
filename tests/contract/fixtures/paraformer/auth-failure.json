@@ -1,0 +1,14 @@
+{
+  "provider": "paraformer",
+  "case": "handshake-auth-failure",
+  "recorded": "HTTP 401/403 handshake contract from the Model Studio WebSocket guide: the Authorization header is verified during the handshake and an invalid or missing key fails with HTTP 401 or 403. Docs contract, not a live capture.",
+  "direction": { "src": "zh", "tgt": "ja" },
+  "options": { "model": "paraformer-realtime-v2" },
+  "auth": { "key": "<redacted>" },
+  "handshake": { "status": 401 },
+  "expected": {
+    "kind": "auth",
+    "messageIncludes": "HTTP 401",
+    "fallbackIncludes": ["DASHSCOPE_API_KEY", "Beijing"]
+  }
+}

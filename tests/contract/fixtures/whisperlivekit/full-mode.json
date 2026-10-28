@@ -1,0 +1,429 @@
+{
+  "provider": "whisperlivekit",
+  "case": "full-mode",
+  "recorded": "Live capture 2026-10-28 from WhisperLiveKit v0.2.26 (model small, SimulStreaming via backend auto, --pcm-input --pause-segmentation-seconds 0.7, RTX 4070 Ti) fed samples/ja-context.wav as 16 kHz mono PCM. Frames excerpted at state changes; wire fields kept as sent. The last lines entry is the in-progress line, so it is emitted only when ready_to_stop commits it.",
+  "url": "ws://127.0.0.1:8000",
+  "direction": {
+    "src": "ja",
+    "tgt": "zh"
+  },
+  "frames": [
+    {
+      "atMs": 100,
+      "data": {
+        "type": "config",
+        "useAudioWorklet": true,
+        "mode": "full"
+      },
+      "events": []
+    },
+    {
+      "atMs": 100,
+      "data": {
+        "status": "no_audio_detected",
+        "lines": [],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0,
+        "remaining_time_transcription_processing": 0,
+        "remaining_time_transcription_policy": 0,
+        "remaining_time_diarization": 0
+      },
+      "events": []
+    },
+    {
+      "atMs": 1300,
+      "data": {
+        "status": "active_transcription",
+        "lines": [],
+        "buffer_transcription": " mazgi g",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.2,
+        "remaining_time_transcription_processing": 0.2,
+        "remaining_time_transcription_policy": 1.1,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "mazgi g",
+          "startMs": 0,
+          "endMs": 1300
+        }
+      ]
+    },
+    {
+      "atMs": 1600,
+      "data": {
+        "status": "active_transcription",
+        "lines": [],
+        "buffer_transcription": " mazgi gilok",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.3,
+        "remaining_time_transcription_processing": 0.2,
+        "remaining_time_transcription_policy": 1.4,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "mazgi gilok",
+          "startMs": 0,
+          "endMs": 1600
+        }
+      ]
+    },
+    {
+      "atMs": 2500,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方",
+            "start": "0:00:00.02",
+            "end": "0:00:01.60",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.5,
+        "remaining_time_transcription_processing": 0.3,
+        "remaining_time_transcription_policy": 0.5,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "まず ギジロクの描き方",
+          "startMs": 20,
+          "endMs": 1600
+        }
+      ]
+    },
+    {
+      "atMs": 2600,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確",
+            "start": "0:00:00.02",
+            "end": "0:00:01.96",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.3,
+        "remaining_time_transcription_processing": 0.1,
+        "remaining_time_transcription_policy": 0.4,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "まず ギジロクの描き方を確",
+          "startMs": 20,
+          "endMs": 1960
+        }
+      ]
+    },
+    {
+      "atMs": 3200,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確認します。",
+            "start": "0:00:00.02",
+            "end": "0:00:02.90",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.4,
+        "remaining_time_transcription_processing": 0.2,
+        "remaining_time_transcription_policy": 0,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "まず ギジロクの描き方を確認します。",
+          "startMs": 20,
+          "endMs": 2900
+        }
+      ]
+    },
+    {
+      "atMs": 3700,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確認します。",
+            "start": "0:00:00.02",
+            "end": "0:00:02.90",
+            "detected_language": "ja"
+          },
+          {
+            "speaker": -2,
+            "text": "",
+            "start": "0:00:02.90",
+            "end": "0:00:03.62"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.2,
+        "remaining_time_transcription_processing": 0.1,
+        "remaining_time_transcription_policy": 0.7,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "stable",
+          "text": "まず ギジロクの描き方を確認します。",
+          "startMs": 20,
+          "endMs": 2900
+        }
+      ]
+    },
+    {
+      "atMs": 4400,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確認します。",
+            "start": "0:00:00.02",
+            "end": "0:00:02.90",
+            "detected_language": "ja"
+          },
+          {
+            "speaker": -2,
+            "text": "",
+            "start": "0:00:02.90",
+            "end": "0:00:03.62"
+          },
+          {
+            "speaker": 1,
+            "text": "ギ",
+            "start": "0:00:03.56",
+            "end": "0:00:03.82",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.3,
+        "remaining_time_transcription_processing": 0.1,
+        "remaining_time_transcription_policy": 0.5,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "ギ",
+          "startMs": 3560,
+          "endMs": 3820
+        }
+      ]
+    },
+    {
+      "atMs": 4700,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確認します。",
+            "start": "0:00:00.02",
+            "end": "0:00:02.90",
+            "detected_language": "ja"
+          },
+          {
+            "speaker": -2,
+            "text": "",
+            "start": "0:00:02.90",
+            "end": "0:00:03.62"
+          },
+          {
+            "speaker": 1,
+            "text": "ギジロクが",
+            "start": "0:00:03.56",
+            "end": "0:00:04.28",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.5,
+        "remaining_time_transcription_processing": 0.2,
+        "remaining_time_transcription_policy": 0.1,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "ギジロクが",
+          "startMs": 3560,
+          "endMs": 4280
+        }
+      ]
+    },
+    {
+      "atMs": 7500,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確認します。",
+            "start": "0:00:00.02",
+            "end": "0:00:02.90",
+            "detected_language": "ja"
+          },
+          {
+            "speaker": -2,
+            "text": "",
+            "start": "0:00:02.90",
+            "end": "0:00:03.62"
+          },
+          {
+            "speaker": 1,
+            "text": "ギジロクが固まったら予算の話に移りましょう",
+            "start": "0:00:03.56",
+            "end": "0:00:06.94",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.7,
+        "remaining_time_transcription_processing": 0.2,
+        "remaining_time_transcription_policy": 0.4,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "ギジロクが固まったら予算の話に移りましょう",
+          "startMs": 3560,
+          "endMs": 6940
+        }
+      ]
+    },
+    {
+      "atMs": 7600,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確認します。",
+            "start": "0:00:00.02",
+            "end": "0:00:02.90",
+            "detected_language": "ja"
+          },
+          {
+            "speaker": -2,
+            "text": "",
+            "start": "0:00:02.90",
+            "end": "0:00:03.62"
+          },
+          {
+            "speaker": 1,
+            "text": "ギジロクが固まったら予算の話に移りましょう",
+            "start": "0:00:03.56",
+            "end": "0:00:06.94",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.8,
+        "remaining_time_transcription_processing": 0.3,
+        "remaining_time_transcription_policy": 0.4,
+        "remaining_time_diarization": 0
+      },
+      "events": []
+    },
+    {
+      "atMs": 7954,
+      "data": {
+        "status": "active_transcription",
+        "lines": [
+          {
+            "speaker": 1,
+            "text": "まず ギジロクの描き方を確認します。",
+            "start": "0:00:00.02",
+            "end": "0:00:02.90",
+            "detected_language": "ja"
+          },
+          {
+            "speaker": -2,
+            "text": "",
+            "start": "0:00:02.90",
+            "end": "0:00:03.62"
+          },
+          {
+            "speaker": 1,
+            "text": "ギジロクが固まったら予算の話に移りましょう。",
+            "start": "0:00:03.56",
+            "end": "0:00:07.32",
+            "detected_language": "ja"
+          }
+        ],
+        "buffer_transcription": "",
+        "buffer_diarization": "",
+        "buffer_translation": "",
+        "remaining_time_transcription": 0.8,
+        "remaining_time_transcription_processing": 0,
+        "remaining_time_transcription_policy": 0.6,
+        "remaining_time_diarization": 0
+      },
+      "events": [
+        {
+          "type": "partial",
+          "text": "ギジロクが固まったら予算の話に移りましょう。",
+          "startMs": 3560,
+          "endMs": 7320
+        }
+      ]
+    },
+    {
+      "atMs": 7954,
+      "data": {
+        "type": "ready_to_stop"
+      },
+      "events": [
+        {
+          "type": "stable",
+          "text": "ギジロクが固まったら予算の話に移りましょう。",
+          "startMs": 3560,
+          "endMs": 7320
+        }
+      ]
+    }
+  ],
+  "expectedStableText": "まず ギジロクの描き方を確認します。 ギジロクが固まったら予算の話に移りましょう。"
+}

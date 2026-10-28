@@ -1,0 +1,12 @@
+Sample audio licence
+
+Every WAV in this folder was generated with Kokoro-FastAPI
+(https://github.com/remsky/Kokoro-FastAPI) using the Kokoro-82M weights, which
+are released under the Apache License 2.0
+(https://huggingface.co/hexgrad/Kokoro-82M).
+
+The generated audio, the timed transcripts, the reference translations and the
+sample text in this folder are released under CC0 1.0 Universal (public domain
+dedication): https://creativecommons.org/publicdomain/zero/1.0/
+
+They are produced by scripts/generate-samples.mjs from samples/manifest.json.

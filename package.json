@@ -1,0 +1,17 @@
+{
+  "name": "parley",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env hosts/node/server.js",
+    "test": "node --test",
+    "lint": "node --test tests/lint.test.js",
+    "smoke": "node --test tests/ws-demo.test.js",
+    "build:apk": "node scripts/build-apk.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
+}

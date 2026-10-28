@@ -1,0 +1,17 @@
+# HTTPS for the Server Host.
+#
+# Default: Caddy's internal CA. `localhost` gets a locally-trusted cert, and
+# the catch-all below covers LAN IPs and hostnames (trust the root CA first,
+# see deploy/README.md).
+#
+# With PUBLIC_DOMAIN set (e.g. parley.example.com): Caddy obtains a Let's
+# Encrypt certificate for that host automatically. Ports 80 and 443 must be
+# reachable from the internet for the ACME challenge.
+{$PUBLIC_DOMAIN:localhost} {
+	reverse_proxy app:3000
+}
+
+https:// {
+	tls internal
+	reverse_proxy app:3000
+}

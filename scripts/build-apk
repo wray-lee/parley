@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Builds the Parley Android APK in Docker (WSL distro "arch").
+# Run from WSL:  wsl.exe -d arch -- bash /mnt/f/Projects/translation/scripts/build-apk
+# or from the repo root:  npm run build:apk
+#
+# The debug keystore is generated once under tmp/ and mounted into the build
+# container as Gradle's debug keystore, so every APK is signed with the same
+# local key. It is gitignored and never committed.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+WORK=${PARLEY_WORKDIR:-$HOME/work/parley}
+TMP="$ROOT/tmp"
+IMAGE=${PARLEY_ANDROID_IMAGE:-parley-android-builder:local}
+KEYSTORE="$TMP/parley-debug.keystore"
+VERSION=$(node -p "require('$ROOT/app/package.json').version")
+APK="$TMP/parley-$VERSION-arm64-debug.apk"
+
+command -v docker >/dev/null || {
+  echo "docker not found: run this inside WSL with Docker available" >&2
+  exit 1
+}
+mkdir -p "$TMP"
+
+if [ "$(id -u)" = 0 ]; then SUDO=""; else SUDO="sudo -n"; fi
+cleanup() { $SUDO rm -rf "$WORK" 2>/dev/null || rm -rf "$WORK"; }
+trap cleanup EXIT
+
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+  echo "building $IMAGE from app/android-builder.Dockerfile"
+  docker build -f "$ROOT/app/android-builder.Dockerfile" -t "$IMAGE" "$ROOT/app"
+fi
+
+$SUDO rm -rf "$WORK" 2>/dev/null || rm -rf "$WORK"
+mkdir -p "$WORK"
+tar -C "$ROOT" \
+  --exclude=.git --exclude=.claude --exclude=.scratch --exclude=tmp --exclude=.env \
+  --exclude=node_modules --exclude=app/dist \
+  --exclude=app/src-tauri/target --exclude=app/src-tauri/gen/android/app/build \
+  -cf - . | tar -C "$WORK" -xf -
+
+if [ ! -f "$KEYSTORE" ]; then
+  echo "generating debug keystore: $KEYSTORE"
+  docker run --rm -v "$TMP:/keys" "$IMAGE" keytool -genkeypair \
+    -keystore /keys/parley-debug.keystore -storepass android -keypass android \
+    -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+    -dname "CN=Android Debug,O=Android,C=US"
+fi
+
+# shortcut: debug-signed aarch64 APK for the phone tracer; switch to a release
+# keystore and signingConfig, and add ABIs, when ticket 18 lands.
+docker run --rm -v "$WORK:/work" -v "$TMP:/keys" -w /work/app "$IMAGE" bash -c '
+  set -euo pipefail
+  mkdir -p /root/.android
+  cp /keys/parley-debug.keystore /root/.android/debug.keystore
+  npm ci --no-audit --no-fund
+  npx tauri android build --apk --debug -t aarch64
+  apk=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" | head -1)
+  test -n "$apk"
+  echo "built: $apk"
+  bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+  "$bt/apksigner" verify --print-certs "$apk" | head -3
+  "$bt/aapt2" dump permissions "$apk" | grep -q "android.permission.RECORD_AUDIO" \
+    && echo "manifest: RECORD_AUDIO declared"
+  cp "$apk" /keys/apk-output.apk
+'
+
+mv "$TMP/apk-output.apk" "$APK"
+sha256sum "$APK" | tee "$APK.sha256"
+echo "APK: $APK"

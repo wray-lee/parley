@@ -1,0 +1,20 @@
+{
+  "provider": "deepgram",
+  "case": "quota-exhaustion",
+  "recorded": "Format-faithful Deepgram WebSocket handshake rejection (developers.deepgram.com/docs/errors, 402 ASR_PAYMENT_REQUIRED). No key is present; replace with a live capture once DEEPGRAM_API_KEY exists.",
+  "direction": { "src": "ja", "tgt": "zh" },
+  "handshake": {
+    "status": 402,
+    "headers": { "content-type": "application/json" },
+    "body": {
+      "err_code": "ASR_PAYMENT_REQUIRED",
+      "err_msg": "Project does not have enough credits for an ASR request and does not have an overage agreement.",
+      "request_id": "<redacted>"
+    }
+  },
+  "expected": {
+    "kind": "quota",
+    "messageContains": "402",
+    "fallbackContains": ["credit", "ASR_PROVIDER=mock"]
+  }
+}

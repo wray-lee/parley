@@ -1,0 +1,69 @@
+# Optional `local` profile: WhisperLiveKit (GPU ASR) and Kokoro-FastAPI (CPU
+# TTS) as network sidecars. Ollama stays external and optional: run it on the
+# host and point LLM_BASE_URL at it (on Linux add
+# extra_hosts: ["host.docker.internal:host-gateway"] to the app, or use the
+# host's LAN address; Docker Desktop resolves host.docker.internal already).
+#
+#   docker compose -f deploy/compose.yaml -f deploy/compose.local.yaml --profile local up -d
+#
+# The first run builds WhisperLiveKit v0.2.26 from source (CUDA image ≈22 GB
+# uncompressed, needs an NVIDIA GPU plus the NVIDIA Container Toolkit) and
+# downloads the model into the parley_wlk_models volume. Keep large-v3: it
+# transcribes both zh and ja. WHISPERLIVEKIT_MODEL=small saves VRAM, but on
+# this image it emits English for zh audio (ticket 21 F4), so zh→ja ASR needs
+# large-v3.
+# The CPU build (Dockerfile.cpu) also works but is weak for zh/ja — see the
+# README caveat.
+#
+# Point the app at the sidecars with these .env values:
+#   ASR_PROVIDER=whisperlivekit
+#   WHISPERLIVEKIT_URL=ws://whisperlivekit:8000
+#   TTS_PROVIDER=kokoro
+#   KOKORO_URL=http://kokoro:8880
+#   LLM_BASE_URL=http://host.docker.internal:11434/v1
+#   LLM_MODEL=<a model you pulled in Ollama>
+name: parley
+
+services:
+  whisperlivekit:
+    profiles: ["local"]
+    image: parley-whisperlivekit:0.2.26
+    build:
+      context: "https://github.com/QuentinFuxa/WhisperLiveKit.git#v0.2.26"
+      dockerfile: Dockerfile
+      args:
+        EXTRAS: cu129
+    # Docker Engine 29 rejects `gpus: all` here with "AMD CDI spec not found"
+    # even though only the NVIDIA spec exists; the CDI device form works on any
+    # host with the NVIDIA Container Toolkit. On Docker Desktop use
+    # `gpus: all` instead.
+    devices:
+      - nvidia.com/gpu=all
+    # Keep WLK's own translation off: do not add --target-language or
+    # --direct-english-translation. The app translates with the LLM and expects
+    # source-language ASR text; either flag makes zh sessions emit English
+    # (ticket 21 F4).
+    # A short pause boundary turns natural clause pauses into committed lines,
+    # which is what the Stable Prefix contract consumes. WLK never commits the
+    # final line by itself; the adapter commits it on ready_to_stop.
+    command:
+      - --model
+      - ${WHISPERLIVEKIT_MODEL:-large-v3}
+      - --pcm-input
+      - --pause-segmentation-seconds
+      - ${WHISPERLIVEKIT_PAUSE_SECONDS:-0.7}
+    volumes:
+      - wlk_models:/root/.cache/huggingface/hub
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  kokoro:
+    profiles: ["local"]
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.9.0
+    expose:
+      - "8880"
+    restart: unless-stopped
+
+volumes:
+  wlk_models:

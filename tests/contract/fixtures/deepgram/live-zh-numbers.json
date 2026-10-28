@@ -1,0 +1,623 @@
+{
+  "provider": "deepgram",
+  "case": "live-zh-numbers",
+  "recorded": "Live Deepgram Nova-3 capture on 2026-10-28 from a 16 kHz mono copy of samples/zh-numbers.wav, sent at realtime pace; key stripped. Replaces the previous synthetic reconstruction.",
+  "sampleTranscript": "平均降水量为 127.5 毫米，站点数 n 等于 42。",
+  "expectedStableText": "平均降水量为一百二十7点5毫米。粘点数等于42",
+  "recognitionCorrections": [
+    [
+      "一百二十7点5",
+      "127.5"
+    ],
+    [
+      "粘点数等于",
+      "站点数n等于"
+    ]
+  ],
+  "direction": {
+    "src": "zh",
+    "tgt": "ja"
+  },
+  "options": {
+    "model": "nova-3",
+    "endpointing": 300,
+    "utteranceEndMs": 1000
+  },
+  "auth": {
+    "mode": "header",
+    "key": "<redacted>"
+  },
+  "urlParams": {
+    "model": "nova-3",
+    "language": "zh",
+    "interim_results": "true",
+    "endpointing": "300",
+    "utterance_end_ms": "1000",
+    "encoding": "linear16",
+    "sample_rate": "16000",
+    "channels": "1",
+    "punctuate": "true",
+    "smart_format": "true"
+  },
+  "frames": [
+    {
+      "atMs": 1630,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 1,
+        "start": 0,
+        "is_final": false,
+        "speech_final": false,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "平均降水量,",
+              "confidence": 0.97998047,
+              "words": [
+                {
+                  "word": "平均",
+                  "start": 0,
+                  "end": 0.39999998,
+                  "confidence": 0.7783203,
+                  "punctuated_word": "平均"
+                },
+                {
+                  "word": "降",
+                  "start": 0.39999998,
+                  "end": 0.71999997,
+                  "confidence": 0.9604492,
+                  "punctuated_word": "降"
+                },
+                {
+                  "word": "水",
+                  "start": 0.71999997,
+                  "end": 0.88,
+                  "confidence": 0.97998047,
+                  "punctuated_word": "水"
+                },
+                {
+                  "word": "量",
+                  "start": 0.88,
+                  "end": 0.96,
+                  "confidence": 0.99902344,
+                  "punctuated_word": "量"
+                }
+              ]
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    },
+    {
+      "atMs": 2716,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 2,
+        "start": 0,
+        "is_final": false,
+        "speech_final": false,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "平均降水量为一百2",
+              "confidence": 0.9921875,
+              "words": [
+                {
+                  "word": "平均",
+                  "start": 0,
+                  "end": 0.48,
+                  "confidence": 0.9589844,
+                  "punctuated_word": "平均"
+                },
+                {
+                  "word": "降",
+                  "start": 0.48,
+                  "end": 0.71999997,
+                  "confidence": 0.99609375,
+                  "punctuated_word": "降"
+                },
+                {
+                  "word": "水",
+                  "start": 0.71999997,
+                  "end": 0.96,
+                  "confidence": 0.9921875,
+                  "punctuated_word": "水"
+                },
+                {
+                  "word": "量",
+                  "start": 0.96,
+                  "end": 1.12,
+                  "confidence": 1,
+                  "punctuated_word": "量"
+                },
+                {
+                  "word": "为",
+                  "start": 1.12,
+                  "end": 1.28,
+                  "confidence": 1,
+                  "punctuated_word": "为"
+                },
+                {
+                  "word": "一百",
+                  "start": 1.28,
+                  "end": 1.68,
+                  "confidence": 0.6430664,
+                  "punctuated_word": "一百"
+                },
+                {
+                  "word": "2",
+                  "start": 1.68,
+                  "end": 1.8399999,
+                  "confidence": 0.50927734,
+                  "punctuated_word": "2"
+                }
+              ]
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    },
+    {
+      "atMs": 3766,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 3,
+        "start": 0,
+        "is_final": false,
+        "speech_final": false,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "平均降水量为127。5毫米。",
+              "confidence": 0.9941406,
+              "words": [
+                {
+                  "word": "平均",
+                  "start": 0,
+                  "end": 0.48,
+                  "confidence": 0.9589844,
+                  "punctuated_word": "平均"
+                },
+                {
+                  "word": "降",
+                  "start": 0.48,
+                  "end": 0.71999997,
+                  "confidence": 0.9980469,
+                  "punctuated_word": "降"
+                },
+                {
+                  "word": "水",
+                  "start": 0.71999997,
+                  "end": 0.96,
+                  "confidence": 0.99609375,
+                  "punctuated_word": "水"
+                },
+                {
+                  "word": "量",
+                  "start": 0.96,
+                  "end": 1.12,
+                  "confidence": 1,
+                  "punctuated_word": "量"
+                },
+                {
+                  "word": "为",
+                  "start": 1.12,
+                  "end": 1.36,
+                  "confidence": 1,
+                  "punctuated_word": "为"
+                },
+                {
+                  "word": "12",
+                  "start": 1.36,
+                  "end": 2.08,
+                  "confidence": 0.48388672,
+                  "punctuated_word": "12"
+                },
+                {
+                  "word": "7。",
+                  "start": 2.08,
+                  "end": 2.56,
+                  "confidence": 0.95947266,
+                  "punctuated_word": "7。"
+                },
+                {
+                  "word": "5",
+                  "start": 2.56,
+                  "end": 2.8,
+                  "confidence": 0.9941406,
+                  "punctuated_word": "5"
+                },
+                {
+                  "word": "毫米。",
+                  "start": 2.8,
+                  "end": 2.96,
+                  "confidence": 0.47802734,
+                  "punctuated_word": "毫米。"
+                }
+              ]
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    },
+    {
+      "atMs": 4534,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 3.63,
+        "start": 0,
+        "is_final": true,
+        "speech_final": true,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "平均降水量为一百二十7点5毫米。",
+              "confidence": 0.9970703,
+              "words": [
+                {
+                  "word": "平均",
+                  "start": 0,
+                  "end": 0.48,
+                  "confidence": 0.96777344,
+                  "punctuated_word": "平均"
+                },
+                {
+                  "word": "降",
+                  "start": 0.48,
+                  "end": 0.71999997,
+                  "confidence": 0.9951172,
+                  "punctuated_word": "降"
+                },
+                {
+                  "word": "水",
+                  "start": 0.71999997,
+                  "end": 0.96,
+                  "confidence": 0.9980469,
+                  "punctuated_word": "水"
+                },
+                {
+                  "word": "量",
+                  "start": 0.96,
+                  "end": 1.12,
+                  "confidence": 1,
+                  "punctuated_word": "量"
+                },
+                {
+                  "word": "为",
+                  "start": 1.12,
+                  "end": 1.36,
+                  "confidence": 1,
+                  "punctuated_word": "为"
+                },
+                {
+                  "word": "一百",
+                  "start": 1.36,
+                  "end": 1.76,
+                  "confidence": 0.74365234,
+                  "punctuated_word": "一百"
+                },
+                {
+                  "word": "二十",
+                  "start": 1.76,
+                  "end": 2.1599998,
+                  "confidence": 0.9863281,
+                  "punctuated_word": "二十"
+                },
+                {
+                  "word": "7",
+                  "start": 2.1599998,
+                  "end": 2.3999999,
+                  "confidence": 0.9980469,
+                  "punctuated_word": "7"
+                },
+                {
+                  "word": "点",
+                  "start": 2.3999999,
+                  "end": 2.6399999,
+                  "confidence": 0.9921875,
+                  "punctuated_word": "点"
+                },
+                {
+                  "word": "5",
+                  "start": 2.6399999,
+                  "end": 2.8,
+                  "confidence": 1,
+                  "punctuated_word": "5"
+                },
+                {
+                  "word": "毫米。",
+                  "start": 2.8,
+                  "end": 3.1999998,
+                  "confidence": 0.9970703,
+                  "punctuated_word": "毫米。"
+                }
+              ]
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    },
+    {
+      "atMs": 5672,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 1.0699997,
+        "start": 3.63,
+        "is_final": false,
+        "speech_final": false,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "粘点数。",
+              "confidence": 0.81933594,
+              "words": [
+                {
+                  "word": "粘",
+                  "start": 3.8700001,
+                  "end": 4.11,
+                  "confidence": 0.68603516,
+                  "punctuated_word": "粘"
+                },
+                {
+                  "word": "点",
+                  "start": 4.11,
+                  "end": 4.35,
+                  "confidence": 0.81933594,
+                  "punctuated_word": "点"
+                },
+                {
+                  "word": "数。",
+                  "start": 4.35,
+                  "end": 4.59,
+                  "confidence": 0.95703125,
+                  "punctuated_word": "数。"
+                }
+              ]
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    },
+    {
+      "atMs": 6827,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 2.17,
+        "start": 3.63,
+        "is_final": false,
+        "speech_final": false,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "粘点数等于42",
+              "confidence": 0.97509766,
+              "words": [
+                {
+                  "word": "粘",
+                  "start": 3.8700001,
+                  "end": 4.19,
+                  "confidence": 0.63671875,
+                  "punctuated_word": "粘"
+                },
+                {
+                  "word": "点",
+                  "start": 4.19,
+                  "end": 4.35,
+                  "confidence": 0.8183594,
+                  "punctuated_word": "点"
+                },
+                {
+                  "word": "数",
+                  "start": 4.35,
+                  "end": 4.59,
+                  "confidence": 0.9921875,
+                  "punctuated_word": "数"
+                },
+                {
+                  "word": "等于",
+                  "start": 4.59,
+                  "end": 5.07,
+                  "confidence": 0.97509766,
+                  "punctuated_word": "等于"
+                },
+                {
+                  "word": "42",
+                  "start": 5.07,
+                  "end": 5.63,
+                  "confidence": 0.99609375,
+                  "punctuated_word": "42"
+                }
+              ]
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    },
+    {
+      "atMs": 7318,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 2.52,
+        "start": 3.63,
+        "is_final": true,
+        "speech_final": true,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "粘点数等于42",
+              "confidence": 0.97265625,
+              "words": [
+                {
+                  "word": "粘",
+                  "start": 3.8700001,
+                  "end": 4.19,
+                  "confidence": 0.6220703,
+                  "punctuated_word": "粘"
+                },
+                {
+                  "word": "点",
+                  "start": 4.19,
+                  "end": 4.35,
+                  "confidence": 0.83251953,
+                  "punctuated_word": "点"
+                },
+                {
+                  "word": "数",
+                  "start": 4.35,
+                  "end": 4.59,
+                  "confidence": 0.9941406,
+                  "punctuated_word": "数"
+                },
+                {
+                  "word": "等于",
+                  "start": 4.59,
+                  "end": 5.15,
+                  "confidence": 0.97265625,
+                  "punctuated_word": "等于"
+                },
+                {
+                  "word": "42",
+                  "start": 5.15,
+                  "end": 5.71,
+                  "confidence": 0.9980469,
+                  "punctuated_word": "42"
+                }
+              ]
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    },
+    {
+      "atMs": 7703,
+      "data": {
+        "type": "Results",
+        "channel_index": [
+          0,
+          1
+        ],
+        "duration": 0.26212502,
+        "start": 6.15,
+        "is_final": true,
+        "speech_final": true,
+        "channel": {
+          "alternatives": [
+            {
+              "transcript": "",
+              "confidence": 0,
+              "words": []
+            }
+          ]
+        },
+        "metadata": {
+          "request_id": "01a180e4-7bb3-7970-b3f6-acd30dad2d5e",
+          "model_info": {
+            "name": "general-nova-3",
+            "version": "2026-03-27.13438",
+            "arch": "nova-3"
+          },
+          "model_uuid": "24c3bf7c-703b-44ee-9331-29aeae504c22"
+        },
+        "from_finalize": false
+      }
+    }
+  ]
+}
