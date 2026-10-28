@@ -1,12 +1,20 @@
 # Parley
 
+**Segment-by-segment simultaneous interpretation — prompt-driven, glossary-aware, on a phone or fully self-hosted.**
+
+[![CI](https://github.com/wray-lee/parley/actions/workflows/ci.yml/badge.svg)](https://github.com/wray-lee/parley/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+![Platforms: web | Android | iOS](https://img.shields.io/badge/platforms-web%20%7C%20Android%20%7C%20iOS-lightgrey.svg)
+
 **English** | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
 
-**Prompt-driven, glossary-aware, segment-by-segment simultaneous interpretation — self-hosted, on a phone, or with a free-tier key.**
+<p align="center"><img src="docs/assets/screenshot-demo.png" width="320" alt="Parley in Demo Mode on a phone: the DEMO banner, a Chinese source Segment, its Japanese translation, and 399 ms per-Segment latency."></p>
+
+<p align="center"><a href="docs/assets/demo.gif">Animated demo (2 s)</a></p>
 
 Parley turns speech into **Segments**, translates each Segment with an OpenAI-compatible LLM using the **Direction**'s system prompt and a rolling context, and speaks the committed Segment immediately. Committed output is never rewritten. Languages and domain glossaries are files, not code.
 
-Parley is Apache-2.0. It ships three ways:
+Parley is Apache-2.0 and ships three ways:
 
 - a **web app** served by a self-hostable **Server Host** (Docker Compose or bare metal);
 - an **Android APK**;
@@ -14,12 +22,18 @@ Parley is Apache-2.0. It ships three ways:
 
 The APK and IPA are thin shells around the same web client. The orchestration core runs either in the **Server Host** or in the app (**Device Host**). The app can also connect to your own Server Host.
 
-- Vocabulary: [`CONTEXT.md`](CONTEXT.md)
-- Architecture decisions: [`docs/adr/0001-one-js-core-two-hosts.md`](docs/adr/0001-one-js-core-two-hosts.md), [`docs/adr/0002-gated-half-duplex-converse.md`](docs/adr/0002-gated-half-duplex-converse.md)
-- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Server deployment: [`deploy/README.md`](deploy/README.md)
-- Releases: [`docs/release.md`](docs/release.md)
-- Third-party notices: [`docs/third-party-notices.md`](docs/third-party-notices.md)
+## Features
+
+- **Simultaneous, not after-the-fact.** Each Segment is translated in flight and spoken as soon as it is committed; source and translation appear together, with latency shown per Segment.
+- **Hold instead of guessing.** The translator can answer **Hold** (`⏸`) on a fragment; the Segment waits, merges with the next one and retries, then is force-translated after 2.5 s. Committed output is never rewritten.
+- **Languages are prompt files.** Drop `prompts/system_en2fr.txt` into the repo and the Direction exists: no code, no rebuild.
+- **Phone-first.** The same web client runs in a phone browser, an Android APK and an iOS IPA (unsigned; sideload it).
+- **Bring your own model.** Any OpenAI-compatible endpoint, a free-tier Preset, or a fully local stack (WhisperLiveKit + Ollama + Kokoro).
+- **Domain Packs.** Per-Session glossaries for medical, conference or your own vocabulary.
+- **Keyless Demo Mode.** A fresh clone runs the whole pipeline on a bundled sample, clearly labelled DEMO.
+- **Apache-2.0, no accounts.** No telemetry or analytics; keys stay on the server or in the OS keystore.
+
+**Contents:** [Quick start](#quick-start) · [How interpretation works](#how-interpretation-works) · [Architecture](#architecture) · [Provider Presets](#provider-presets) · [HTTPS](#https-and-certificates) · [Language and Domain Packs](#language-packs-and-domain-packs) · [Measured latency](#measured-latency) · [Security and privacy](#security-and-privacy) · [Known limits](#known-limits) · [Testing](#testing) · [Documentation](#documentation) · [Contributing](#contributing)
 
 ## How interpretation works
 
@@ -37,7 +51,7 @@ A language is added by dropping a prompt file into `prompts/`. A domain glossary
 ```mermaid
 flowchart LR
   B[Phone browser] -->|HTTPS + WSS| C[Caddy]
-  C --> S[Node Server Host<br/>Session core + Providers]
+  C --> S[Bun Server Host<br/>Session core + Providers]
   A[Parley app<br/>Tauri shell: same web client<br/>Device Host core] -->|direct HTTPS / WSS| P[Cloud ASR, LLM and TTS]
   A -.->|optional: connect to my server| C
   S --> L[OpenAI-compatible LLM]
@@ -45,33 +59,33 @@ flowchart LR
   S --> T[Kokoro / Azure / Edge / system TTS]
 ```
 
-- **One core, two hosts** ([ADR-0001](docs/adr/0001-one-js-core-two-hosts.md)). `core/` is plain JavaScript ES modules: no build step, no DOM, no Node built-ins. Platform transport lives in one adapter per environment.
-- **Server Host:** Node 24, static web client, WebSocket protocol bridge, Caddy for HTTPS. It is the only home for the self-hosted model stack (WhisperLiveKit, Ollama, Kokoro).
+- **One core, two hosts** ([ADR-0001](docs/adr/0001-one-js-core-two-hosts.md)). `core/` is plain JavaScript ES modules: no build step, no DOM, no Node built-ins or Bun-only APIs (the one exception is the server-only Edge TTS adapter, which the app never loads). Platform transport lives in one adapter per environment.
+- **Server Host:** Bun ≥ 1.4, static web client, WebSocket protocol bridge, Caddy for HTTPS. It is the only home for the self-hosted model stack (WhisperLiveKit, Ollama, Kokoro).
 - **Device Host:** runs the same core inside the app, calls Providers directly, keeps keys in the OS keystore and defaults to the OS TTS.
 - **Browser client of a Server Host** is a protocol client; it never runs the core and never sees server keys.
 - **Converse** is gated half-duplex with explicit Turns ([ADR-0002](docs/adr/0002-gated-half-duplex-converse.md)).
 
 ## Quick start
 
-### 1. Demo Mode in five minutes (no keys, no config)
+### 1. Demo Mode (no keys)
 
-With no `.env` and no Provider settings, every Provider resolves to `mock`: the app runs the whole pipeline on a bundled sample, labels output **DEMO**, and needs no account or key.
+With no `.env` and no Provider settings, every Provider resolves to `mock`: the whole pipeline runs on a bundled sample, output is labelled **DEMO**, and no account or key is needed.
 
 Docker (recommended):
 
 ```sh
-git clone <this repository> parley
+git clone https://github.com/wray-lee/parley.git
 cd parley
 docker compose -f deploy/compose.yaml up -d --build
 ```
 
 Open `https://localhost/` (accept the internal-CA warning) or `https://<server-ip>/` from a phone. Press **Start**: the bundled zh→ja sample plays through ASR, translation and TTS, and the DEMO banner stays visible. `/healthz` answers `{"ok":true}`.
 
-Bare metal (Node 24):
+Bare metal (Bun ≥ 1.4):
 
 ```sh
-npm ci --omit=dev
-npm start          # or: node --env-file-if-exists=.env hosts/node/server.js
+bun install --production --frozen-lockfile
+bun run start      # or: bun hosts/node/server.js
                    # http://localhost:3000 — no TLS, so the microphone is unavailable
 ```
 
@@ -79,12 +93,12 @@ Demo Mode uses the bundled sample, so it works without a microphone. Press **Mic
 
 In Demo Mode the mock ASR refuses live microphone audio with a clear error instead of pretending to listen.
 
-### 2. The app (APK / IPA)
+### 2. App (APK / IPA)
 
 Demo Mode works in the app with no keys. To build the APK locally (WSL on Windows, or Linux):
 
 ```sh
-npm run build:apk
+bun run build:apk
 ```
 
 This builds a debug-signed arm64 APK at `tmp/parley-<version>-arm64-debug.apk`; install it with `adb install tmp/parley-<version>-arm64-debug.apk`. The first build downloads/creates the Android builder image (several GB) and needs Docker. On Windows it uses the WSL distro `arch` by default; set `PARLEY_WSL_DISTRO` to override. See [`app/README.md`](app/README.md).
@@ -103,7 +117,7 @@ cp .env.example .env
 
 Every variable is documented in [`.env.example`](.env.example). Provider lines are commented out on purpose: an empty value is not the same as an unset one. Uncomment the ones you use.
 
-> Wiring note: on the Server Host the translator, ASR and TTS options are all passed through, so `DEEPGRAM_API_KEY`, `DASHSCOPE_API_KEY` and `WHISPERLIVEKIT_URL` select the same live ASR the app uses.
+The Server Host passes translator, ASR and TTS options through, so `DEEPGRAM_API_KEY`, `DASHSCOPE_API_KEY` and `WHISPERLIVEKIT_URL` select the same live ASR providers the app uses.
 
 ```sh
 # After editing .env
@@ -235,7 +249,7 @@ Microphones require a secure context. The Compose setup always serves HTTPS thro
 
 - **Domain:** set `PUBLIC_DOMAIN=parley.example.com` in `.env` and start with `--env-file .env`; Caddy obtains and renews a Let's Encrypt certificate. Ports 80 and 443 must be reachable.
 
-- **Tunnels instead of a CA:** run the Node host on loopback and use `tailscale serve --bg 3000`, or `cloudflared tunnel --url http://127.0.0.1:3000`. Both terminate TLS with a publicly trusted certificate.
+- **Tunnels instead of a CA:** run the Bun host on loopback and use `tailscale serve --bg 3000`, or `cloudflared tunnel --url http://127.0.0.1:3000`. Both terminate TLS with a publicly trusted certificate.
 
 Full deployment details, bare-metal proxying and caveats are in [`deploy/README.md`](deploy/README.md).
 
@@ -249,9 +263,9 @@ No code is required.
 
 Language codes are opaque strings; nothing in `core/` branches on a particular language. Per-language clause tuning lives in [`config/pairs.json`](config/pairs.json) (optional; defaults apply otherwise). The four prompt markers, glossary placeholder, annotated zh↔ja template, TSV rules and a self-test checklist are in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-The zh↔ja Language Packs and conference Domain Packs are frozen product assets: never reword them. Add new files instead.
+The Server Host loads base Glossaries and every Domain Pack, and injects the selected Packs into each translator request. A Pack entry overrides a base Glossary entry with the same source term.
 
-> Support note: the Node Server Host loads base Glossaries and every Domain Pack, and the Session injects the selected Packs into the translator request (a Pack entry overrides a base Glossary entry with the same source term). Covered by `tests/session.test.js`, `tests/packs-registry.test.js` and `tests/server-host.test.js`.
+The zh↔ja Language Packs and conference Domain Packs are frozen product assets: never reword them. Add new files instead.
 
 ## Measured latency
 
@@ -266,20 +280,13 @@ Through the real Server Host, `tts_first_chunk - first_token` was 603 ms. Senten
 
 ## Testing
 
-Parley tests two seams, and only these two:
-
-1. **Seam 1 — Session core:** drive a Session with protocol messages, audio frames, a fake clock and scripted fake Providers; assert on emitted events and Segment log records.
-2. **Seam 2 — Provider contract:** replay recorded real wire traffic (keys stripped) through an adapter; assert on normalised events. Fixtures live in `tests/contract/fixtures/`.
-
-Run them with:
-
 ```sh
-npm test                 # node --test
-npm run lint
-node scripts/demo-smoke.mjs   # keyless Demo Mode over the real Server Host WebSocket
+bun test                      # all tests
+bun run lint                  # zero-dependency syntax check
+bun scripts/demo-smoke.mjs    # keyless Demo Mode over the real Server Host
 ```
 
-Live acceptance checks against real services are scripts, not CI tests; they need keys or local models.
+CI runs the same checks on every push and pull request. Test seams and policy are described in [CONTRIBUTING.md](CONTRIBUTING.md#testing-policy-two-seams).
 
 ## Security and privacy
 
@@ -292,19 +299,28 @@ Live acceptance checks against real services are scripts, not CI tests; they nee
 
 - Loudspeaker output lags by one Segment: interpretation is quasi-simultaneous, not word-by-word.
 - Far-field lecture pickup is physically limited; a close microphone gives much better ASR.
-- Converse is gated half-duplex on phones (ADR-0002), not full-duplex with echo cancellation.
+- Converse is gated half-duplex on phones ([ADR-0002](docs/adr/0002-gated-half-duplex-converse.md)), not full-duplex with echo cancellation.
 - CosyVoice is a stub: selecting it fails with a clear "not implemented" error.
 - Kokoro's zh/ja voices are mid-quality (Chinese is graded D in the model card).
 - WhisperLiveKit on CPU is weak for zh/ja. The GPU image is specified as ≈8 GB to download; the local build measured ≈22 GB uncompressed on disk. It needs an NVIDIA GPU.
 - Edge TTS is an unofficial, reverse-engineered service; it can break without notice.
 - Gemini's free tier trains on prompts; free-tier limits and model IDs change often.
 - System TTS depends on a voice installed in the browser; when none matches the target language it shows a one-time notice and subtitles only.
-- T1 (≤ 2.5 s) depends on the translator's first-token latency. With a reasoning model at medium effort (set via `LLM_EXTRA_BODY`), live runs met it for ~70% of Segments (median 2.1 s; misses 2.7–9.8 s, all from the LLM stage). Low effort is faster but skipped `⏸` and leaked reasoning; high effort is too slow. Use a non-reasoning model if every Segment must meet T1.
-- Cold start is not part of the T1 budget: the first Segment after `docker compose up` can spend ~30 s loading WhisperLiveKit/Ollama (measured 29.9 s, one request timed out at 30 s). Prewarm with one throwaway Segment before measuring T1, or judge from the second Segment.
+- The 2.5 s latency target depends on the translator's first-token latency. With a reasoning model at medium effort (set via `LLM_EXTRA_BODY`), live runs met it for ~70% of Segments (median 2.1 s; misses 2.7–9.8 s, all from the LLM stage). Low effort is faster but skipped `⏸` and leaked reasoning; high effort is too slow. Use a non-reasoning model if every Segment must meet 2.5 s.
+- Cold start is not part of that target: the first Segment after `docker compose up` can spend ~30 s loading WhisperLiveKit or Ollama (measured 29.9 s, one request timed out at 30 s). Prewarm with one throwaway Segment, or judge from the second Segment.
 - Local zh→ja recognition works with the shipped WhisperLiveKit v0.2.26 `large-v3` image and compose flags; a `small` model or WhisperLiveKit's own translation flags can return English instead. Never enable WhisperLiveKit-side translation.
-- Phone install and the on-phone checks (T5/T7) are still PENDING-USER; see `.scratch/t20/PENDING-USER-runbook.md`.
-- The APK from `npm run build:apk` is debug-signed and arm64-only; the IPA is unsigned. No app-store publishing.
+- **Not yet verified on real phones.** Phone installation and on-device checks are still pending, and the unsigned IPA macOS build has not been exercised.
+- The APK from `bun run build:apk` is debug-signed and arm64-only; the IPA is unsigned. No app-store publishing.
 - Language auto-detection, speaker diarization, accounts, payments and analytics are out of scope.
+
+## Documentation
+
+- [Vocabulary](CONTEXT.md)
+- Architecture decisions: [one JS core, two hosts](docs/adr/0001-one-js-core-two-hosts.md), [gated half-duplex Converse](docs/adr/0002-gated-half-duplex-converse.md)
+- [App build](app/README.md)
+- [Server deployment](deploy/README.md)
+- [Releases](docs/release.md)
+- [Third-party notices](docs/third-party-notices.md)
 
 ## Contributing
 
@@ -312,7 +328,7 @@ No CLA. Contributions are accepted under Apache-2.0. **Open an issue first** for
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for file formats, naming, the prompt protocol, the zh↔ja annotated template, self-tests and the Provider adapter template.
 
-CI runs `npm run lint`, `npm test` and the keyless demo smoke on every push and pull request.
+CI runs `bun run lint`, `bun test` and the keyless demo smoke on every push and pull request.
 
 ## License
 

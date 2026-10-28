@@ -6,6 +6,7 @@ Parley is Apache-2.0. There is **no CLA**: by opening a pull request you agree t
 
 Before you start:
 
+- Install **Bun ≥ 1.4**; it runs the server, the tests and the build scripts. Node is not required.
 - Never copy code from PolyTalk or any AGPL/GPL/LGPL project. Edge TTS is an independent implementation; keep it that way.
 - `prompts/system_zh2ja.txt`, `prompts/system_ja2zh.txt` and `packs/conference_*.tsv` are frozen product assets. Never reword them; add new files instead.
 - Keep language-specific logic out of `core/`. No code may branch on a particular language code.
@@ -14,9 +15,9 @@ Before you start:
 Run the checks before pushing:
 
 ```sh
-npm test                      # node --test
-npm run lint
-node scripts/demo-smoke.mjs   # keyless Demo Mode over the real Server Host
+bun test                      # all tests
+bun run lint
+bun scripts/demo-smoke.mjs    # keyless Demo Mode over the real Server Host
 ```
 
 ## Testing policy: two seams
@@ -26,7 +27,7 @@ Parley tests exactly two seams. Do not add tests that assert private state or in
 1. **Seam 1 — Session core.** Drive a Session with protocol messages, audio frames, a fake clock and scripted fake Providers; assert on emitted protocol events and Segment log records. Covers Cut triggers, Hold/merge/retry, ordering, context and Glossary, Turn routing/Gating, Demo labelling and errors.
 2. **Seam 2 — Provider contract.** Replay recorded real wire traffic through one adapter and assert the normalised events it emits. Recordings are captured once from live services, stored under `tests/contract/fixtures/<provider>/`, and **must have keys, request ids and personal endpoints stripped**.
 
-Live checks against real services (`scripts/live-check-*.mjs`) are acceptance scripts, not CI tests. They need keys or local models and write only to gitignored `.scratch/` or `tmp/`. CI runs lint, the test suite and the keyless demo smoke (`.github/workflows/ci.yml`).
+Live checks against real services (`scripts/live-check-*.mjs`) are acceptance scripts, not CI tests. They need keys or local models and write only to gitignored local directories. CI runs lint, the test suite and the keyless demo smoke (`.github/workflows/ci.yml`).
 
 ## Adding a Language Pack (a new Direction)
 
@@ -42,7 +43,7 @@ A Language Pack is **one system prompt file** and an optional glossary. No code 
 - One file = one Direction. Language Pairs are derived automatically: if both `en2fr` and `fr2en` exist, the pair works in Listen and Converse; with one Direction it is listen-only.
 - Start from the annotated template below. Keep the prompt itself in the target language's working language; the zh↔ja prompts are written in Chinese.
 - Per-language Cut tuning goes in `config/pairs.json`, keyed as `"{src}->{tgt}"`: `{"clauseLength": 12, "unit": "char"}`. `unit` is `char` or `word`; an invalid or missing entry disables the clause-length trigger (silence, accumulation and PTT still cut). Never put thresholds in code.
-- **Wiring:** the Node Server Host loads `prompts/glossary_{src}2{tgt}.tsv` and every `packs/*.tsv`; the Session injects the selected Domain Packs into the translator request.
+- **Wiring:** the Bun Server Host loads `prompts/glossary_{src}2{tgt}.tsv` and every `packs/*.tsv`; the Session injects the selected Domain Packs into the translator request.
 
 ### The four protocol markers
 
@@ -115,7 +116,7 @@ packs/{name}_{src}2{tgt}.tsv
 - No header row and no comment syntax: a line beginning with `#` is treated as a term (or as a malformed row if it has no tab). Blank lines are ignored; cells are trimmed; both cells must be non-empty.
 - Malformed rows are ignored with a warning naming `file:line`. A duplicate source term wins with the last occurrence. A selected Pack overrides a base Glossary entry for the same source term.
 - Match the target language of the Direction: `conference_zh2ja.tsv` translates Chinese terms into Japanese. A Pack for the reverse Direction is a separate file.
-- **Wiring:** the registry parses Packs, `selectGlossary()` merges them over the base Glossary, and the Session passes the result into the translator request. The Node Server Host loads `glossary_*.tsv` and pack text. Tests: `tests/packs-registry.test.js`, `tests/session.test.js` and `tests/server-host.test.js`.
+- **Wiring:** the registry parses Packs, `selectGlossary()` merges them over the base Glossary, and the Session passes the result into the translator request. The Bun Server Host loads `glossary_*.tsv` and pack text. Tests: `tests/packs-registry.test.js`, `tests/session.test.js` and `tests/server-host.test.js`.
 
 Example (from `packs/conference_zh2ja.tsv`):
 
@@ -164,10 +165,10 @@ ffmpeg -i samples/zh-numbers.wav -ar 16000 -ac 1 -c:a pcm_s16le /tmp/zh-numbers-
 |---|---|---|
 | **Hold** | `samples/ja-held.wav` or a sentence whose predicate arrives in the next clause | First attempt answers `⏸`; the Segment merges and retries; log shows `held:true`, `merges:1`; a forced translation appears only after the 2.5 s limit. |
 | **Numbers** | `samples/zh-numbers.wav` (contains `127.5` and `42`) | Both numbers, units and `n` appear unchanged in the translation; no rounding or rewriting. |
-| **Glossary** | zh→ja with the `conference` Domain Pack selected | 预算→予算, 议事录→議事録, 截止日期→締め切り. With the Pack unselected, those mappings are not forced. The reverse Direction needs its own Pack. Also covered by `node --test tests/session.test.js tests/packs-registry.test.js tests/server-host.test.js`. |
+| **Glossary** | zh→ja with the `conference` Domain Pack selected | 预算→予算, 议事录→議事録, 截止日期→締め切り. With the Pack unselected, those mappings are not forced. The reverse Direction needs its own Pack. Also covered by `bun test tests/session.test.js tests/packs-registry.test.js tests/server-host.test.js`. |
 | **Context** | `samples/zh-context.wav` / `samples/ja-context.wav` | The second Segment reuses the first Segment's term and pronouns consistently (for example 議事録/预算); context is per Direction and capped at 8 pairs. |
 | **Direction / Pair** | New prompt files | One Direction appears as listen-only; both Directions are selectable in Converse. |
-| **Regression** | Clean checkout, no `.env` | `npm test`, `npm run lint` and `node scripts/demo-smoke.mjs` all pass. |
+| **Regression** | Clean checkout, no `.env` | `bun test`, `bun run lint` and `bun scripts/demo-smoke.mjs` all pass. |
 
 Copy this into the PR description:
 
@@ -180,14 +181,14 @@ Numbers: pass/fail — <evidence>
 Glossary on/off: pass/fail — <evidence>
 Context: pass/fail — <evidence>
 Pair availability: Listen/Converse — <evidence>
-npm test / lint / demo-smoke: pass/fail
+bun test / lint / demo-smoke: pass/fail
 ```
 
 For a live check, use the existing scripts with your own key in the shell (never in a file):
 
 ```sh
-node scripts/live-check-translator.mjs
-node scripts/live-check-asr.mjs /tmp/zh-numbers-16k.wav zh
+bun scripts/live-check-translator.mjs
+bun scripts/live-check-asr.mjs /tmp/zh-numbers-16k.wav zh
 ```
 
 ## Adding an ASR or TTS Provider
@@ -196,7 +197,7 @@ Providers are resolved by filename convention; no registry edit is needed.
 
 1. Add `core/providers/asr-{name}.js` or `core/providers/tts-{name}.js`. `{name}` matches `^[a-z][a-z0-9-]*$` and becomes the value of `ASR_PROVIDER` / `TTS_PROVIDER`.
 2. Export `create(options)` returning the adapter object. The loader imports `./{kind}-{name}.js` and calls `create`; host options are passed in.
-3. Keep it platform-free: inject `fetch`/`WebSocket` through options (as the existing adapters do) and do not import Node built-ins. The same file must run in Node and the app WebView.
+3. Keep it platform-free: inject `fetch`/`WebSocket` through options (as the existing adapters do) and do not import Node built-ins or use Bun-only APIs. The same file must run under Bun and in the app WebView.
 4. Emit normalised errors, never throw silently: `{type:'error', provider:'asr'|'tts', kind, message, fallback}` with `kind` one of `unreachable | auth | rate_limit | quota | timeout | protocol | region` and a fallback naming the env variable and a working alternative (for example `ASR_PROVIDER=mock`).
 
 **ASR adapter shape**
@@ -242,7 +243,7 @@ export function create({ url, apiKey } = {}) {
 
 **Tests and wiring**
 
-- Add a Seam 2 test under `tests/contract/` and a stripped fixture under `tests/contract/fixtures/<provider>/`. Run `node --test tests/contract/<file>.test.js`.
+- Add a Seam 2 test under `tests/contract/` and a stripped fixture under `tests/contract/fixtures/<provider>/`. Run `bun test tests/contract/<file>.test.js`.
 - Wire new options into `hosts/node/config.js` and `.env.example`; the app's Settings/provider wiring is in `app/device-host.js` and `app/settings.js` if it should be selectable on-device.
 - Add the option to `deploy/README.md` or `README.md` only if users must set it.
 - Do not copy a reference implementation from an AGPL/GPL/LGPL project. Write the protocol client from the Provider's public documentation and record its real traffic in the fixture.
@@ -252,7 +253,7 @@ export function create({ url, apiKey } = {}) {
 - [ ] Scope agreed in an issue (new Pack/Preset/Provider).
 - [ ] No frozen asset reworded; no key, `.env`, certificate or keystore committed.
 - [ ] Formats and filenames follow this document.
-- [ ] `npm test`, `npm run lint`, `node scripts/demo-smoke.mjs` pass.
+- [ ] `bun test`, `bun run lint`, `bun scripts/demo-smoke.mjs` pass.
 - [ ] New non-trivial logic has a Seam 1 or Seam 2 test; live checks are separate.
 - [ ] README/Preset table updated if user-facing configuration changed.
 - [ ] Contribution is original or clearly licensed for Apache-2.0.
