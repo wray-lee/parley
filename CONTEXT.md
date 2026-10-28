@@ -1,6 +1,6 @@
 # Parley
 
-Self-hosted simultaneous interpretation in a phone browser. Speech is cut into segments, translated with rolling context, and committed segment by segment; committed output is never revised.
+Self-hosted simultaneous interpretation on a phone and in a browser. Speech is cut into segments, translated with rolling context, and committed segment by segment; committed output is never revised.
 
 ## Language
 
@@ -19,7 +19,10 @@ How a Session uses a Language Pair — **Listen** (one Direction, user only list
 In Converse, who is currently speaking — **me** or **them**. Turns are chosen explicitly by the user and select the Direction that receives audio.
 
 **Gating**:
-Withholding microphone audio from ASR while the app's own speech is playing, plus a short tail.
+Withholding microphone audio from ASR while the app's own speech is playing, plus a short tail. It applies in Converse only; Listen never gates.
+
+**Face-to-Face split**:
+The Converse layout for two people sharing one phone: two halves, each in its speaker's language, with the far half rotated 180 degrees and each half carrying its own Turn control.
 
 **Session**:
 One start-to-stop run of a Mode on a Language Pair, with its own Rolling Context and selected Domain Packs.
@@ -65,7 +68,13 @@ An ASR hypothesis judged to be the app's own playback picked up by the microphon
 A deployment where the core runs on a server the user operates; browsers and the app (as a thin client) connect to it.
 
 **Device Host**:
-The core running inside the installed app on the phone, calling providers directly with keys held on the device.
+The core running inside the installed app on the phone, calling providers directly with keys held on the device. The app reaches it through a Loopback Host.
+
+**Loopback Host**:
+The Device Host's transport: a WebSocket on the loopback interface with a per-launch credential, so the app speaks the same wire protocol it uses to a Server Host.
+
+**Lite client**:
+The vanilla JavaScript web client kept at `/lite` as the fallback until the Flutter web client passes its release gates.
 
 **Provider**:
 A replaceable ASR, translator, or TTS service.
@@ -80,12 +89,20 @@ An optional shared passphrase guarding a Server Host. It is not an account.
 **Demo Mode**:
 Any Session where at least one of ASR, translator, or TTS is a mock; always visibly labelled DEMO.
 
+**Session Trace**:
+A recorded Session — its inputs (client messages, microphone frames, clock advances, Provider responses) and its outputs (host events, Provider requests) — replayed on a fake clock to compare implementations.
+
+**Conformance Suite**:
+A black-box test suite that runs the wire protocol against any host and asserts the same observable behaviour; it is the parity gate between hosts.
+
 ## Relationships
 
 - A **Language Pair** has two **Directions**; **Listen** needs one, **Converse** needs both
 - A **Direction** is defined by one **Language Pack** and may have any number of **Domain Packs**
 - A **Session** produces **Segments**; each **Segment** is **Held** zero or more times, then **Committed** exactly once
 - Only **Committed** Segments enter the **Rolling Context**
+- A **Device Host** is reached through exactly one **Loopback Host**
+- A **Session Trace** replays one **Session**; a **Conformance Suite** exercises a host over the wire
 
 ## Example dialogue
 

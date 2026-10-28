@@ -1,5 +1,7 @@
 # One JS orchestration core, hosted on a server or inside the mobile app
 
+Status: Superseded by ADR-0003.
+
 The original spec made the product a phone-browser web app backed by a self-hosted orchestration server, and it explicitly forbade native apps. We reversed that: Parley also ships an APK and an IPA, so that someone can install it, paste a free-tier API key, and use it without owning a server. To make that possible, the orchestration core (segmentation, hold/commit, rolling context, TTS queue) is written once as plain JavaScript ES modules with no build step. It runs in two hosts:
 
 - **Server host:** Node, deployed via Docker or bare metal and configured with environment variables. It serves plain browsers over the WebSocket protocol, and it is the only home for the local model stack (WhisperLiveKit, Ollama, Kokoro).

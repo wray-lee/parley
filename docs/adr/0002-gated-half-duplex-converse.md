@@ -1,5 +1,7 @@
 # Converse mode is gated half-duplex with explicit turns, not full-duplex AEC
 
+Status: Amended by ADR-0003.
+
 The original spec kept the microphone streaming while the phone speaker plays translated speech, relying on browser echo cancellation. Research showed this does not hold on phones. Android WebView/Chrome AEC references only WebRTC playout, so neither Web Audio nor system TTS is cancelled. iOS WebKit behaves the same way until device-tested otherwise. No mobile page can route one stream to the speaker and another to earphones at the same time.
 
 So Converse mode works as follows:
