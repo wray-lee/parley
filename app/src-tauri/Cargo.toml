@@ -1,6 +1,6 @@
 [package]
 name = "parley"
-version = "0.1.0"
+version = "0.0.1"
 description = "Parley app shell: the same web client, hosted in a Tauri v2 WebView"
 edition = "2021"
 rust-version = "1.77.2"
