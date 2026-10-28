@@ -10,9 +10,15 @@ import { createRegistry } from './core/packs-registry.js';
 import { createProvider } from './core/providers/index.js';
 import { createSession } from './core/session.js';
 import { loadKeyStore } from './keystore.js';
-import { loadTauriPlatform } from './platform-tauri.js';
+import { loadTauriPlatform, requestLocalNetworkAccess } from './platform-tauri.js';
 import { createServerWebSocket } from './server-socket.js';
-import { mountSettings, readSettings, SECRET_KEYS } from './settings.js';
+import {
+  LOCAL_NETWORK_DENIED,
+  mountSettings,
+  needsLocalNetworkPermission,
+  readSettings,
+  SECRET_KEYS,
+} from './settings.js';
 import { createSpeechGate } from './speech-gate.js';
 import { loadSystemSpeaker } from './tts-speaker.js';
 
@@ -58,6 +64,7 @@ mountSettings({
   keyStore: keyStorePromise,
   presets: PRESETS,
   onSaved: () => globalThis.location?.reload(),
+  requestLocalNetwork: requestLocalNetworkAccess,
 });
 
 async function mockProviders(sample) {
@@ -87,6 +94,11 @@ async function createProviders(sample) {
   // No translator key means Demo Mode, exactly as the Server Host behaves.
   if (preset.requiresKey && !llmKey) {
     return { providers: await mockProviders(sample), abort: null };
+  }
+
+  // Android 17 gates LAN sockets; ask before the first Provider request.
+  if (needsLocalNetworkPermission(current) && !(await requestLocalNetworkAccess())) {
+    throw new Error(LOCAL_NETWORK_DENIED);
   }
 
   let platformPromise = null;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   DEFAULT_SETTINGS,
+  needsLocalNetworkPermission,
   normalizeBaseUrl,
   normalizeExtraBody,
   normalizeModel,
@@ -128,4 +129,61 @@ test('extra request fields must be a JSON object', () => {
   for (const value of ['[]', 'null', '"x"', '42']) {
     assert.throws(() => normalizeExtraBody(value), /object/);
   }
+});
+
+test('only LAN targets require Android local-network access', () => {
+  const device = { ...DEFAULT_SETTINGS, translatorBaseUrl: 'https://api.groq.com/openai/v1' };
+  assert.equal(needsLocalNetworkPermission(device), false);
+  assert.equal(
+    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'http://192.168.1.10:11434/v1' }),
+    true,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'https://[fd00::1]/v1' }),
+    true,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'https://parley.local/v1' }),
+    true,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'https://parley.home.arpa/v1' }),
+    true,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'http://localhost:11434/v1' }),
+    false,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'http://127.0.0.1:11434/v1' }),
+    false,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({
+      ...device,
+      ttsProvider: 'kokoro',
+      kokoroUrl: 'http://192.168.1.10:8880',
+    }),
+    true,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({
+      ...device,
+      ttsProvider: 'system',
+      kokoroUrl: 'http://192.168.1.10:8880',
+    }),
+    false,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({ ...device, mode: 'server', serverUrl: 'ws://10.0.0.5:8787' }),
+    true,
+  );
+  assert.equal(
+    needsLocalNetworkPermission({
+      ...device,
+      mode: 'server',
+      serverUrl: 'wss://parley.example.com',
+    }),
+    false,
+  );
 });

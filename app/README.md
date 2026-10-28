@@ -40,7 +40,8 @@ All Tauri API use is confined to three thin adapters:
 - `build-frontend.mjs` — assembles `dist/` from the repo's static files.
 - `src-tauri/` — Tauri v2 shell (Rust side has no app logic).
 - `src-tauri/gen/android/` — generated Android project, committed; the manifest
-  declares `android.permission.RECORD_AUDIO`.
+  declares `android.permission.RECORD_AUDIO` and
+  `android.permission.ACCESS_LOCAL_NETWORK`.
 - `src-tauri/Info.ios.plist` — iOS microphone usage string (stub; IPA is
   human-gated in ticket 18).
 - `android-builder.Dockerfile` — SDK/NDK/Rust/Bun build image.
@@ -55,6 +56,9 @@ Access Token. The translator section also takes an optional **Base URL**
 override (required for the `custom` Preset, which also needs a **Model**), a
 **Model** override for any Preset, and **Extra request fields (JSON)**, which
 follows the Server Host's `LLM_EXTRA_BODY` rules. Saving reloads the app.
+On Android 17+, saving a LAN URL (Kokoro URL, custom Base URL, or a LAN Server
+Host) asks for the Nearby devices permission (`ACCESS_LOCAL_NETWORK`); denial
+keeps the dialog open with a specific error. `localhost` needs no grant.
 
 - API keys and the server token are written **only** through the secure
   keystore. Non-secret choices (Presets, provider names, server URL, Base URL,
@@ -146,8 +150,8 @@ APK and its sha256
 land in `tmp/`:
 
 ```
-tmp/parley-0.0.2-arm64-debug.apk
-tmp/parley-0.0.2-arm64-debug.apk.sha256
+tmp/parley-0.0.3-arm64-debug.apk
+tmp/parley-0.0.3-arm64-debug.apk.sha256
 ```
 
 Docker images pulled by the build: `oven/bun:1.4.3` (Bun, copied into the
@@ -181,8 +185,8 @@ been run. They are the acceptance procedure for tickets 16 and 17.
 
 ### Demo Mode (ticket 16)
 
-1. Transfer `tmp/parley-0.0.2-arm64-debug.apk` to the Android phone (USB,
-   Tailscale, or `adb install -r F:\Projects\translation\tmp\parley-0.0.2-arm64-debug.apk`).
+1. Transfer `tmp/parley-0.0.3-arm64-debug.apk` to the Android phone (USB,
+   Tailscale, or `adb install -r F:\Projects\translation\tmp\parley-0.0.3-arm64-debug.apk`).
 2. Allow install from unknown sources for the file manager, then install.
 3. Open **Parley**. The header shows `ready` and the DEMO banner is visible
    because no keys are stored yet.

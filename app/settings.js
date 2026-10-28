@@ -82,6 +82,38 @@ function isPrivateHttpHost(hostname) {
   );
 }
 
+// Android 17's local-network definition lists RFC 1918, link-local, CGNAT and
+// IPv6 local addresses but not 127/8 or ::1, so localhost stays prompt-free.
+function isLocalNetworkUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value ?? '').trim());
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host === '::1' || host.startsWith('127.')) return false;
+  // mDNS and home-network names only resolve on the LAN.
+  if (/\.(local|lan|home\.arpa)$/.test(host)) return true;
+  return (
+    isPrivateHttpHost(host) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host) ||
+    /^(fe[89ab][0-9a-f]|f[cd][0-9a-f]{2}):/.test(host)
+  );
+}
+
+// True when saving or connecting would reach a Provider over the LAN (Kokoro, a
+// custom translator Base URL, or a Server Host), which Android 17 gates behind
+// the ACCESS_LOCAL_NETWORK runtime permission.
+export function needsLocalNetworkPermission(settings) {
+  if (settings?.mode === 'server') return isLocalNetworkUrl(settings.serverUrl);
+  if (isLocalNetworkUrl(settings?.translatorBaseUrl)) return true;
+  return settings?.ttsProvider === 'kokoro' && isLocalNetworkUrl(settings?.kokoroUrl);
+}
+
+export const LOCAL_NETWORK_DENIED =
+  'Android blocked local-network access. Allow Nearby devices for Parley in Android Settings, then try again.';
+
 // Mirrors the Tauri HTTP scope: https anywhere, plain http only on loopback/LAN.
 export function normalizeBaseUrl(value, presetId = '') {
   const baseUrl = String(value ?? '')
@@ -190,7 +222,12 @@ function textInput(value, { type = 'text', placeholder = '', autocomplete = 'off
   return input;
 }
 
-export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {}) {
+export function mountSettings({
+  keyStore,
+  presets = {},
+  onSaved = () => {},
+  requestLocalNetwork = async () => true,
+} = {}) {
   if (typeof document === 'undefined' || !document.body) return null;
 
   const style = document.createElement('style');
@@ -383,6 +420,10 @@ export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {
         status.textContent = error.message;
         return;
       }
+    }
+    if (needsLocalNetworkPermission(values) && !(await requestLocalNetwork())) {
+      status.textContent = LOCAL_NETWORK_DENIED;
+      return;
     }
     writeSettings(values);
     if (!store) store = await resolveStore(keyStore);

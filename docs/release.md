@@ -105,8 +105,8 @@ Only after the user explicitly authorises a push:
 3. Commit, then tag and push **only the tag** (or push the commit and the tag once authorised):
 
    ```bash
-   git tag -a v0.0.2 -m "Parley 0.0.2"
-   git push origin v0.0.2
+   git tag -a v0.0.3 -m "Parley 0.0.3"
+   git push origin v0.0.3
    ```
 
    Pushing the tag is what triggers the Release workflow and publishes the GitHub Release. The agent must not do this step.
@@ -120,10 +120,10 @@ A manual **Run workflow** on a branch exercises both builds without publishing a
 ### Android
 
 ```bash
-adb install -r parley-0.0.2-arm64.apk
+adb install -r parley-0.0.3-arm64.apk
 ```
 
-Or copy the APK to the phone and tap it; allow "Install unknown apps" for the file manager or browser when prompted. If an older build with a different signing key is installed, uninstall it first (`adb uninstall app.parley.translate`). The APK declares `RECORD_AUDIO`; the permission is requested on first use of the microphone.
+Or copy the APK to the phone and tap it; allow "Install unknown apps" for the file manager or browser when prompted. If an older build with a different signing key is installed, uninstall it first (`adb uninstall app.parley.translate`). The APK declares `RECORD_AUDIO` and `ACCESS_LOCAL_NETWORK`; microphone access is requested on first use, and local-network access when a LAN URL is saved on Android 17+.
 
 ### iOS unsigned IPA (AltStore / SideStore)
 

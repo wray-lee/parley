@@ -4,6 +4,19 @@
 // The plugin modules are vendored under ./vendor with their bare imports
 // rewritten so the shell keeps working without a bundler.
 
+import { invoke } from './vendor/api/core.js';
+
+// Android 17 (targetSdk 37) blocks LAN sockets until the user grants
+// ACCESS_LOCAL_NETWORK. The Rust command drives a tiny Kotlin plugin; desktop
+// shells answer granted, so callers can use this unconditionally.
+export async function requestLocalNetworkAccess() {
+  try {
+    return (await invoke('request_local_network_access')) === 'granted';
+  } catch {
+    return false;
+  }
+}
+
 // shortcut: one hard 35 s deadline per request; make it per-Provider when a
 // slow local model needs a longer stream than the 30 s Provider timeout.
 const DEFAULT_TIMEOUT_MS = 35_000;

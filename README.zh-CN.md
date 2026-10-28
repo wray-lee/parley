@@ -105,7 +105,7 @@ bun run build:apk
 
 IPA 由发布工作流在 macOS runner 上以未签名方式构建（推送 `v*` 标签，或运行 Actions → Release），并使用 AltStore/SideStore 安装。该 macOS 任务尚未实际运行过，因此首次 IPA 构建应视为未经验证。发布签名说明见 [`docs/release.md`](docs/release.md)。APK/IPA 不会发布到应用商店。
 
-在 App 中，**Settings** 按钮用于选择翻译器 Preset、ASR Provider 和 TTS Provider，并把 Key 保存在操作系统钥匙串中。翻译器选项还包括 **Base URL** 覆盖（`custom` 必填，且还需要 **Model**）、任意 Preset 的 **Model** 覆盖，以及与 `LLM_EXTRA_BODY` 规则相同的 **Extra request fields (JSON)**。明文 http 的 Base URL 仅限回环和局域网私有 IPv4 地址，其他主机需要 https。没有翻译器/ASR Key 时，App 会停留在 Demo Mode，并显示 DEMO 横幅。
+在 App 中，**Settings** 按钮用于选择翻译器 Preset、ASR Provider 和 TTS Provider，并把 Key 保存在操作系统钥匙串中。翻译器选项还包括 **Base URL** 覆盖（`custom` 必填，且还需要 **Model**）、任意 Preset 的 **Model** 覆盖，以及与 `LLM_EXTRA_BODY` 规则相同的 **Extra request fields (JSON)**。明文 http 的 Base URL 仅限回环和局域网私有 IPv4 地址，其他主机需要 https。在 Android 17 及更高版本上，保存局域网 URL 时会请求“附近设备”权限（`ACCESS_LOCAL_NETWORK`）；拒绝后设置对话框会保留明确错误，`localhost` 无需授权。没有翻译器/ASR Key 时，App 会停留在 Demo Mode，并显示 DEMO 横幅。
 
 ### 3. 带真实 Provider 的 Server Host
 

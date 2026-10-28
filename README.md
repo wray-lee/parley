@@ -105,7 +105,7 @@ This builds a debug-signed arm64 APK at `tmp/parley-<version>-arm64-debug.apk`; 
 
 The IPA is built unsigned on a macOS runner by the release workflow (push a `v*` tag, or run Actions → Release) and is installed with AltStore/SideStore. The macOS job has not yet been exercised, so treat the first IPA build as unverified. Release signing is covered in [`docs/release.md`](docs/release.md). The APK/IPA are not published to an app store.
 
-In the app, the **Settings** button picks the translator Preset, ASR Provider and TTS Provider, and stores keys in the OS keystore. Translator options also include a **Base URL** override (required for `custom`, which also needs a **Model**), a **Model** override for any Preset, and **Extra request fields (JSON)** with the same rules as `LLM_EXTRA_BODY`. Plain-http Base URLs are limited to loopback and private LAN IPv4 addresses; other hosts need https. With no translator/ASR key, the app stays in Demo Mode with the DEMO banner.
+In the app, the **Settings** button picks the translator Preset, ASR Provider and TTS Provider, and stores keys in the OS keystore. Translator options also include a **Base URL** override (required for `custom`, which also needs a **Model**), a **Model** override for any Preset, and **Extra request fields (JSON)** with the same rules as `LLM_EXTRA_BODY`. Plain-http Base URLs are limited to loopback and private LAN IPv4 addresses; other hosts need https. On Android 17+, saving a LAN URL asks for the Nearby devices permission (`ACCESS_LOCAL_NETWORK`); denial keeps the error in the settings dialog, and `localhost` needs no grant. With no translator/ASR key, the app stays in Demo Mode with the DEMO banner.
 
 ### 3. Server Host with real Providers
 

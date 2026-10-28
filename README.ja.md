@@ -105,7 +105,7 @@ bun run build:apk
 
 IPA はリリースワークフローが macOS ランナー上で未署名でビルドし（`v*` タグを push するか、Actions → Release を実行）、AltStore/SideStore でインストールします。macOS ジョブはまだ実行されたことがないため、最初の IPA ビルドは未検証とお考えください。リリース署名については [`docs/release.md`](docs/release.md) で説明しています。APK/IPA はアプリストアでは公開されません。
 
-アプリでは、**Settings** ボタンで翻訳 Preset、ASR Provider、TTS Provider を選択し、キーを OS のキーストアに保存します。翻訳のオプションには **Base URL** の上書き（`custom` では必須で、**Model** も必要）、任意の Preset の **Model** 上書き、`LLM_EXTRA_BODY` と同じ規則の **Extra request fields (JSON)** もあります。平文 http の Base URL はループバックとプライベート LAN の IPv4 アドレスに限られ、それ以外のホストには https が必要です。翻訳／ASR キーがない場合、アプリは DEMO バナーのまま Demo Mode で動作します。
+アプリでは、**Settings** ボタンで翻訳 Preset、ASR Provider、TTS Provider を選択し、キーを OS のキーストアに保存します。翻訳のオプションには **Base URL** の上書き（`custom` では必須で、**Model** も必要）、任意の Preset の **Model** 上書き、`LLM_EXTRA_BODY` と同じ規則の **Extra request fields (JSON)** もあります。平文 http の Base URL はループバックとプライベート LAN の IPv4 アドレスに限られ、それ以外のホストには https が必要です。Android 17 以降では、LAN URL を保存する際に「Nearby devices」権限（`ACCESS_LOCAL_NETWORK`）を要求します。拒否した場合は設定ダイアログにエラーが残り、`localhost` には許可は不要です。翻訳／ASR キーがない場合、アプリは DEMO バナーのまま Demo Mode で動作します。
 
 ### 3. 実際の Provider を使う Server Host
 
