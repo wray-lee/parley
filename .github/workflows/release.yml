@@ -100,6 +100,8 @@ jobs:
             apk="parley-$VERSION-arm64-debug.apk"
           fi
           mv "$RUNNER_TEMP/out/parley.apk" "$RUNNER_TEMP/out/$apk"
+          # apksigner writes a v4 idsig next to the APK; it is not a release asset.
+          rm -f "$RUNNER_TEMP/out/parley.apk.idsig"
           (cd "$RUNNER_TEMP/out" && sha256sum "$apk" > "$apk.sha256")
           cat "$RUNNER_TEMP/out/$apk.sha256"
 
