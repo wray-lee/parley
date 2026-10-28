@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // PENDING-USER live check for the real translator. It needs a real key and
 // never writes the key anywhere: the result lands in gitignored .scratch/.
 //
 //   export LLM_PRESET=groq
 //   export LLM_API_KEY=...            # paste in your shell; never commit it
-//   node scripts/live-check-translator.mjs
+//   bun scripts/live-check-translator.mjs
 //
 // With a local .env instead (gitignored):
-//   node --env-file-if-exists=.env scripts/live-check-translator.mjs
+//   bun scripts/live-check-translator.mjs
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -34,10 +34,10 @@ if (preset.requiresKey && !API_KEY) {
       'Exact steps:',
       '  1. export LLM_PRESET=groq',
       '  2. export LLM_API_KEY=<your key>   # paste in the shell; never commit it',
-      '  3. node scripts/live-check-translator.mjs',
+      '  3. bun scripts/live-check-translator.mjs',
       '',
       'Or put both variables in .env (gitignored) and run:',
-      '  node --env-file-if-exists=.env scripts/live-check-translator.mjs',
+      '  bun scripts/live-check-translator.mjs',
     ].join('\n'),
   );
   process.exit(2);

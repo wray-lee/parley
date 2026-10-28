@@ -11,9 +11,6 @@ on:
 permissions:
   contents: read
 
-env:
-  NODE_VERSION: '24'
-
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -27,6 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.3
+
       - name: Free disk space (the builder image is ~8.5 GB)
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
@@ -35,7 +36,7 @@ jobs:
       - name: Build APK in the Android builder image
         run: |
           set -euo pipefail
-          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          version=$(bun -p "require('./app/src-tauri/tauri.conf.json').version")
           echo "VERSION=$version" >> "$GITHUB_ENV"
           mkdir -p "$RUNNER_TEMP/keys" "$RUNNER_TEMP/out"
 
@@ -59,10 +60,10 @@ jobs:
             -w /work/app \
             parley-android-builder:local bash -c '
               set -euo pipefail
-              npm ci --no-audit --no-fund
+              bun install --frozen-lockfile
               bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
               if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-                npx tauri android build --apk -t aarch64
+                bunx tauri android build --apk -t aarch64
                 apk=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -print -quit)
                 test -n "$apk"
                 "$bt/zipalign" -f -p 4 "$apk" /tmp/aligned.apk
@@ -77,7 +78,7 @@ jobs:
                   -storepass android -keypass android -alias androiddebugkey \
                   -keyalg RSA -keysize 2048 -validity 10000 \
                   -dname "CN=Android Debug,O=Android,C=US"
-                npx tauri android build --apk --debug -t aarch64
+                bunx tauri android build --apk --debug -t aarch64
                 apk=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -print -quit)
                 test -n "$apk"
                 cp "$apk" /out/parley.apk
@@ -120,18 +121,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: app/package-lock.json
+          bun-version: 1.4.3
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-app-${{ hashFiles('app/bun.lock') }}
+          restore-keys: ${{ runner.os }}-bun-app-
 
       - name: Install Rust iOS target
         run: rustup target add aarch64-apple-ios
 
       - name: Install app dependencies
         working-directory: app
-        run: npm ci --no-audit --no-fund
+        run: bun install --frozen-lockfile
 
       - name: Import signing certificate (optional)
         if: env.APPLE_CERTIFICATE_BASE64 != ''
@@ -159,20 +163,20 @@ jobs:
           set -euo pipefail
           # The iOS Xcode project is generated, not committed (unlike gen/android).
           if [ ! -d src-tauri/gen/apple ]; then
-            npx tauri ios init --ci
+            bunx tauri ios init --ci
           fi
           if [ -n "${APPLE_CERTIFICATE_BASE64:-}" ]; then
-            npx tauri ios build --ci --export-method debugging
+            bunx tauri ios build --ci --export-method debugging
             suffix=""
           else
-            npx tauri ios build --no-sign --ci
+            bunx tauri ios build --no-sign --ci
             suffix="-unsigned"
           fi
           ipa=$(find src-tauri/gen/apple/build -name "*.ipa" > "$RUNNER_TEMP/ipas.txt"; head -n 1 "$RUNNER_TEMP/ipas.txt")
           test -n "$ipa"
           unzip -l "$ipa" > "$RUNNER_TEMP/ipa-list.txt"
           grep -q "Payload/.*\.app/" "$RUNNER_TEMP/ipa-list.txt"
-          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          version=$(bun -p "require('./src-tauri/tauri.conf.json').version")
           mkdir -p "$RUNNER_TEMP/out"
           cp "$ipa" "$RUNNER_TEMP/out/parley-$version$suffix.ipa"
           (cd "$RUNNER_TEMP/out" && shasum -a 256 "parley-$version$suffix.ipa" \

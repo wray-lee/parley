@@ -1,7 +1,7 @@
 # Keep node_modules, .git, tmp/ and .scratch/ out of the build context.
 *
 !package.json
-!package-lock.json
+!bun.lock
 !core
 !config
 !hosts

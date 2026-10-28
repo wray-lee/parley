@@ -1,8 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Keyless live check of the Edge read-aloud adapter. It is unofficial and may
 // break at any time. Audio evidence lands in gitignored tmp/.
 //
-//   node scripts/live-check-tts-edge.mjs
+//   bun scripts/live-check-tts-edge.mjs
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';

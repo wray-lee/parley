@@ -1,8 +1,15 @@
 # Android build image for the Parley app shell.
 # Build it with scripts/build-apk (Docker in WSL); it is not a product artefact.
+
+# Bun installs the app workspace's JS deps (Tauri CLI) and runs it.
+FROM oven/bun:1.4.3 AS bun
+
 FROM rust:1.98-bookworm
 
-ARG NODE_VERSION=24.22.1
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+# `bunx` is a symlink in the oven/bun image; COPY above takes only the binary.
+RUN ln -s /usr/local/bin/bun /usr/local/bin/bunx
+
 ARG CMDLINE_TOOLS=16111833
 ARG ANDROID_PLATFORM=android-37.0
 ARG ANDROID_BUILD_TOOLS=37.0.0
@@ -18,9 +25,6 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       openjdk-17-jdk-headless curl unzip xz-utils git pkg-config libssl-dev \
  && rm -rf /var/lib/apt/lists/*
-
-RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
-      | tar -xJ -C /usr/local --strip-components=1
 
 RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
  && curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS}_latest.zip" -o /tmp/cmdline-tools.zip \

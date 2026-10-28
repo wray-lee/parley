@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the Parley Android APK in Docker (WSL distro "arch").
 # Run from WSL:  wsl.exe -d arch -- bash /mnt/f/Projects/translation/scripts/build-apk
-# or from the repo root:  npm run build:apk
+# or from the repo root:  bun run build:apk
 #
 # The debug keystore is generated once under tmp/ and mounted into the build
 # container as Gradle's debug keystore, so every APK is signed with the same
@@ -13,7 +13,7 @@ WORK=${PARLEY_WORKDIR:-$HOME/work/parley}
 TMP="$ROOT/tmp"
 IMAGE=${PARLEY_ANDROID_IMAGE:-parley-android-builder:local}
 KEYSTORE="$TMP/parley-debug.keystore"
-VERSION=$(node -p "require('$ROOT/app/package.json').version")
+VERSION=$(bun -p "require('$ROOT/app/package.json').version")
 APK="$TMP/parley-$VERSION-arm64-debug.apk"
 
 command -v docker >/dev/null || {
@@ -53,8 +53,8 @@ docker run --rm -v "$WORK:/work" -v "$TMP:/keys" -w /work/app "$IMAGE" bash -c '
   set -euo pipefail
   mkdir -p /root/.android
   cp /keys/parley-debug.keystore /root/.android/debug.keystore
-  npm ci --no-audit --no-fund
-  npx tauri android build --apk --debug -t aarch64
+  bun install --frozen-lockfile
+  bunx tauri android build --apk --debug -t aarch64
   apk=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" | head -1)
   test -n "$apk"
   echo "built: $apk"

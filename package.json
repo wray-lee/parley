@@ -5,11 +5,11 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "start": "node --env-file-if-exists=.env hosts/node/server.js",
-    "test": "node --test",
-    "lint": "node --test tests/lint.test.js",
-    "smoke": "node --test tests/ws-demo.test.js",
-    "build:apk": "node scripts/build-apk.mjs"
+    "start": "bun hosts/node/server.js",
+    "test": "bun test",
+    "lint": "bun test tests/lint.test.js",
+    "smoke": "bun scripts/demo-smoke.mjs",
+    "build:apk": "bun scripts/build-apk.mjs"
   },
   "dependencies": {
     "ws": "^8.22.0"

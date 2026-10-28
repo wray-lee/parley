@@ -18,6 +18,7 @@ execFileSync(process.execPath, [path.join(APP, 'build-frontend.mjs')], {
   env: { ...process.env, PARLEY_DIST: DIST },
 });
 
+const realFetch = globalThis.fetch;
 globalThis.fetch = async (url) => {
   const pathname = String(url).replace(/^https?:\/\/[^/]+/, '').split('?')[0];
   try {
@@ -49,7 +50,11 @@ async function waitFor(predicate, timeoutMs = 5000) {
 }
 
 test('Device Host runs the bundled sample to a DEMO Segment', async (t) => {
-  t.after(() => rm(DIST, { recursive: true, force: true }));
+  // bun test shares one process across files; a leaked fetch stub breaks later tests.
+  t.after(() => {
+    globalThis.fetch = realFetch;
+    return rm(DIST, { recursive: true, force: true });
+  });
   const { ws, messages } = connect();
   await waitFor(() => messages.some((message) => message.type === 'hello'));
   const hello = messages.find((message) => message.type === 'hello');

@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // PENDING-USER live check for Alibaba DashScope Paraformer real-time ASR. It
 // needs a real Beijing-region key and a speech WAV; it never writes the key
 // anywhere. The result lands in gitignored .scratch/live-check-paraformer.json.
 //
 //   export DASHSCOPE_API_KEY=...          # paste in your shell; never commit it
-//   node scripts/live-check-paraformer.mjs samples/live-check.wav ja
+//   bun scripts/live-check-paraformer.mjs samples/live-check.wav ja
 //
 // With a local .env instead (gitignored):
-//   node --env-file-if-exists=.env scripts/live-check-paraformer.mjs samples/live-check.wav ja
+//   bun scripts/live-check-paraformer.mjs samples/live-check.wav ja
 //
 // A workspace-specific endpoint may replace the default Beijing one:
 //   export DASHSCOPE_URL=wss://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference
@@ -40,10 +40,10 @@ function exactSteps() {
     'Exact steps:',
     '  1. export DASHSCOPE_API_KEY=<Beijing-region key>   # paste in the shell; never commit it',
     '  2. ffmpeg -i input.m4a -ar 16000 -ac 1 -c:a pcm_s16le samples/live-check.wav',
-    `  3. node scripts/live-check-paraformer.mjs samples/live-check.wav ${LANGUAGE}`,
+    `  3. bun scripts/live-check-paraformer.mjs samples/live-check.wav ${LANGUAGE}`,
     '',
     'Or put DASHSCOPE_API_KEY in .env (gitignored) and run:',
-    `  node --env-file-if-exists=.env scripts/live-check-paraformer.mjs samples/live-check.wav ${LANGUAGE}`,
+    `  bun scripts/live-check-paraformer.mjs samples/live-check.wav ${LANGUAGE}`,
     '',
     'Paraformer is served only from the Beijing region; the free quota is',
     '10 h/month and may change. The check cannot be faked.',

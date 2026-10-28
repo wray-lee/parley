@@ -1,11 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const SKIP = new Set(['node_modules', '.git', 'tmp', '.scratch']);
+
+// Bun has no `--check`; its transpiler parses in-process. Node uses --check.
+const transpiler = globalThis.Bun ? new Bun.Transpiler({ loader: 'js' }) : null;
+
+function check(file) {
+  if (!transpiler) return spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+  try {
+    transpiler.transformSync(readFileSync(file, 'utf8'));
+    return { status: 0, stderr: '' };
+  } catch (error) {
+    return { status: 1, stderr: error.message };
+  }
+}
 
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -21,7 +34,7 @@ test('every JavaScript file parses (zero-dependency syntax check)', () => {
   const files = walk(root);
   assert.ok(files.length >= 10, `expected project sources, found ${files.length}`);
   for (const file of files) {
-    const result = spawnSync(process.execPath, ['--check', file], { encoding: 'utf8' });
+    const result = check(file);
     assert.equal(
       result.status,
       0,

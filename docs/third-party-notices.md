@@ -41,7 +41,7 @@ These run as separate services or images and keep their own licences and notices
 | Component | Licence | Role |
 |---|---|---|
 | Caddy | Apache-2.0 | HTTPS reverse proxy in `deploy/compose.yaml` |
-| Node.js (`node:24-alpine`) | MIT | Server Host runtime |
+| Bun (`oven/bun:1.4.3-alpine`) | MIT | Server Host runtime |
 | WhisperLiveKit | Apache-2.0 (SimulStreaming MIT since 2025-10-22) | optional local ASR sidecar |
 | Kokoro-FastAPI | Apache-2.0 | local TTS sidecar; Kokoro-82M weights Apache-2.0 |
 | Ollama | MIT | optional local LLM runtime (external) |

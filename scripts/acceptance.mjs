@@ -1,17 +1,17 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Live acceptance runner for ticket 20. Three subcommands:
 //
-//   node scripts/acceptance.mjs demo
+//   bun scripts/acceptance.mjs demo
 //     Seam 1 replay of samples/zh-numbers.json through real Session + mock
 //     Providers: T3 number fidelity and the T1 timing fields.
 //
-//   node scripts/acceptance.mjs live --url ws://127.0.0.1:3000/ws \
+//   bun scripts/acceptance.mjs live --url ws://127.0.0.1:3000/ws \
 //     --sample samples/zh-numbers.wav --src zh --tgt ja [--packs conference] \
 //     [--expect 127.5,42] [--token X] [--insecure] [--out tmp/t20/events.json]
 //     Replays a WAV as real-time 16 kHz PCM into a running Server Host and
 //     records every event. Judge the server log afterwards with `judge`.
 //
-//   node scripts/acceptance.mjs judge <server.log> [--require-segment] [--t5]
+//   bun scripts/acceptance.mjs judge <server.log> [--require-segment] [--t5]
 //     Reads the host's JSON-line Segment log, prints T1 deltas and a T5/T7
 //     verdict aid. T1 is asr_final_at -> tts_first_chunk; the speech_end and
 //     first_token deltas are printed alongside for comparison.
@@ -422,6 +422,6 @@ if (command === 'demo') await demo();
 else if (command === 'live') await live();
 else if (command === 'judge') await judge();
 else {
-  console.error('usage: node scripts/acceptance.mjs demo|live|judge ...');
+  console.error('usage: bun scripts/acceptance.mjs demo|live|judge ...');
   process.exitCode = 2;
 }

@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // PENDING-USER live check for Azure Speech TTS. It needs a real F0 key and
 // never writes the key anywhere: the audio evidence lands in gitignored tmp/.
 //
 //   export AZURE_SPEECH_KEY=...
 //   export AZURE_SPEECH_REGION=japaneast
-//   node scripts/live-check-tts-azure.mjs
+//   bun scripts/live-check-tts-azure.mjs
 //
 // With a local .env instead (gitignored):
-//   node --env-file-if-exists=.env scripts/live-check-tts-azure.mjs
+//   bun scripts/live-check-tts-azure.mjs
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -28,10 +28,10 @@ if (!config.ttsOptions.azureKey || !config.ttsOptions.azureRegion) {
       '  1. Create a Speech resource (F0 free tier) in the Azure portal.',
       '  2. export AZURE_SPEECH_KEY=<key 1 or key 2 from the resource>',
       '  3. export AZURE_SPEECH_REGION=<resource region, e.g. japaneast>',
-      '  4. node scripts/live-check-tts-azure.mjs',
+      '  4. bun scripts/live-check-tts-azure.mjs',
       '',
       'Or put both variables in .env (gitignored) and run:',
-      '  node --env-file-if-exists=.env scripts/live-check-tts-azure.mjs',
+      '  bun scripts/live-check-tts-azure.mjs',
     ].join('\n'),
   );
   process.exit(2);

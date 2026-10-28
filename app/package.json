@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "tauri": "tauri",
-    "build:frontend": "node build-frontend.mjs"
+    "build:frontend": "bun build-frontend.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4",

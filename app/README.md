@@ -42,7 +42,7 @@ All Tauri API use is confined to three thin adapters:
   declares `android.permission.RECORD_AUDIO`.
 - `src-tauri/Info.ios.plist` — iOS microphone usage string (stub; IPA is
   human-gated in ticket 18).
-- `android-builder.Dockerfile` — SDK/NDK/Rust/Node build image.
+- `android-builder.Dockerfile` — SDK/NDK/Rust/Bun build image.
 - `../scripts/build-apk` — WSL + Docker APK build.
 
 ## Settings, keys and fallbacks
@@ -100,12 +100,12 @@ Access Token. Saving reloads the app.
 | `tauri-plugin-secure-keystore` | 0.0.3-beta.1 |
 | Android SDK | platform android-37.0, build-tools 37.0.0 |
 | Android NDK | 30.0.16248370 |
-| Node (build image) | 24.22.1 |
+| Bun (build image and runtime) | 1.4.3 |
 | JDK (build image) | 17 |
 
 ## Self-check
 
-`node --test app/` (also picked up by the root `npm test`) covers the adapter
+`bun test app/` (also picked up by the root `bun run test`) covers the adapter
 seams without a phone: fetch timeout/abort/late-chunk handling, WebSocket header
 auth and PCM batching, keystore fallback, TTS event matching and Web Speech
 fallback, the Converse gate, settings storage (no secrets), and the server-mode
@@ -119,7 +119,7 @@ via `PARLEY_DIST`.
 From Windows (any shell), at the repo root:
 
 ```sh
-npm run build:apk
+bun run build:apk
 ```
 
 Equivalent, from WSL:
@@ -130,18 +130,20 @@ wsl.exe -d arch -- bash /mnt/f/Projects/translation/scripts/build-apk
 
 The script copies the repo to `/home/<user>/work/parley` (no secrets, no
 `.git`), builds `parley-android-builder:local` on first use, copies the repo to
-the container, runs `npm ci` and `npx tauri android build --apk --debug -t
-aarch64`, and deletes the work directory afterwards. The APK and its sha256
+the container, runs `bun install --frozen-lockfile` and `bunx tauri android
+build --apk --debug -t aarch64`, and deletes the work directory afterwards. The
+APK and its sha256
 land in `tmp/`:
 
 ```
-tmp/parley-0.1.0-arm64-debug.apk
-tmp/parley-0.1.0-arm64-debug.apk.sha256
+tmp/parley-0.0.1-arm64-debug.apk
+tmp/parley-0.0.1-arm64-debug.apk.sha256
 ```
 
-Docker images pulled by the build: `rust:1.98-bookworm` (base, only if it is
-not already present). The Android SDK, NDK, Node and JDK are downloaded by the
-Dockerfile from Google/nodejs.org, not pulled as images. Remove the local
+Docker images pulled by the build: `oven/bun:1.4.3` (Bun, copied into the
+builder) and `rust:1.98-bookworm` (base, only if it is not already present). The
+Android SDK and NDK are downloaded by the Dockerfile from Google; the JDK
+comes from Debian packages and Bun from the `oven/bun` image. Remove the local
 builder image when it is no longer needed:
 
 ```sh
@@ -169,8 +171,8 @@ been run. They are the acceptance procedure for tickets 16 and 17.
 
 ### Demo Mode (ticket 16)
 
-1. Transfer `tmp/parley-0.1.0-arm64-debug.apk` to the Android phone (USB,
-   Tailscale, or `adb install -r F:\Projects\translation\tmp\parley-0.1.0-arm64-debug.apk`).
+1. Transfer `tmp/parley-0.0.1-arm64-debug.apk` to the Android phone (USB,
+   Tailscale, or `adb install -r F:\Projects\translation\tmp\parley-0.0.1-arm64-debug.apk`).
 2. Allow install from unknown sources for the file manager, then install.
 3. Open **Parley**. The header shows `ready` and the DEMO banner is visible
    because no keys are stored yet.
@@ -203,7 +205,7 @@ been run. They are the acceptance procedure for tickets 16 and 17.
    wrong Deepgram key and press Mic; an `auth` error toast names Deepgram and
    suggests checking the key.
 7. Optional server mode: start a Server Host (for example
-   `PORT=3100 node hosts/node/server.js` on the LAN), Settings → Mode
+   `PORT=3100 bun hosts/node/server.js` on the LAN), Settings → Mode
    **Connect to my server** → URL and Save. The app must show the Server Host's
    pairs and `ready`; Access Token enforcement is pending server-side.
 

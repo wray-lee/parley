@@ -1,4 +1,4 @@
-// npm entry point for the Android build: WSL on Windows, bash elsewhere.
+// bun entry point for the Android build: WSL on Windows, bash elsewhere.
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 

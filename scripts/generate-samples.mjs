@@ -1,7 +1,7 @@
 // Generates the bundled sample audio with Kokoro and writes one WAV plus one
 // sidecar JSON per sample. Kokoro must be listening (deploy/compose.kokoro.yaml):
 //   docker compose -f deploy/compose.kokoro.yaml up -d
-//   node scripts/generate-samples.mjs
+//   bun scripts/generate-samples.mjs
 // The sidecar's timed transcript is computed from the synthesised clause
 // boundaries, so it stays aligned with the audio without manual timing.
 

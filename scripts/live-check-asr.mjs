@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Live check for the real Deepgram ASR. It needs a real key and a speech WAV
 // file, and it never writes the key anywhere: the result lands in gitignored
 // .scratch/live-check-deepgram.json.
 //
 //   export DEEPGRAM_API_KEY=...          # paste in your shell; never commit it
-//   node scripts/live-check-asr.mjs samples/live-check.wav ja
+//   bun scripts/live-check-asr.mjs samples/live-check.wav ja
 //
 // With a local .env instead (gitignored):
-//   node --env-file-if-exists=.env scripts/live-check-asr.mjs samples/live-check.wav ja
+//   bun scripts/live-check-asr.mjs samples/live-check.wav ja
 //
 // The WAV must be 16 kHz mono 16-bit PCM, because the adapter streams raw PCM:
 //   ffmpeg -i input.m4a -ar 16000 -ac 1 -c:a pcm_s16le samples/live-check.wav
@@ -37,10 +37,10 @@ function exactSteps() {
     'Exact steps:',
     '  1. export DEEPGRAM_API_KEY=<your key>   # paste in the shell; never commit it',
     '  2. ffmpeg -i input.m4a -ar 16000 -ac 1 -c:a pcm_s16le samples/live-check.wav',
-    `  3. node scripts/live-check-asr.mjs samples/live-check.wav ${LANGUAGE}`,
+    `  3. bun scripts/live-check-asr.mjs samples/live-check.wav ${LANGUAGE}`,
     '',
     'Or put DEEPGRAM_API_KEY in .env (gitignored) and run:',
-    `  node --env-file-if-exists=.env scripts/live-check-asr.mjs samples/live-check.wav ${LANGUAGE}`,
+    `  bun scripts/live-check-asr.mjs samples/live-check.wav ${LANGUAGE}`,
   ].join('\n');
 }
 

@@ -93,7 +93,9 @@ function collect(ws) {
 
 const port = await freePort();
 const startedAt = Date.now();
-const server = spawn(process.execPath, ['hosts/node/server.js'], {
+// Bun auto-loads .env; this smoke must behave like a clean clone with none.
+const runtimeArgs = process.versions.bun ? ['--no-env-file'] : [];
+const server = spawn(process.execPath, [...runtimeArgs, 'hosts/node/server.js'], {
   cwd: ROOT,
   env: demoEnv(port),
   stdio: ['ignore', 'pipe', 'pipe'],

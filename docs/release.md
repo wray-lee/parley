@@ -96,16 +96,17 @@ For TestFlight/App Store distribution, change `--export-method debugging` to `ap
 
 Only after the user explicitly authorises a push:
 
-1. Bump the version in all three places:
+1. Bump the version in all four places:
+   - `package.json` → `version`
    - `app/package.json` → `version`
    - `app/src-tauri/Cargo.toml` → `[package] version` (then rebuild once so `Cargo.lock` records it)
    - `app/src-tauri/tauri.conf.json` → `version`
-2. Run the CI checks locally: `npm ci && npm run lint && npm run test && node scripts/demo-smoke.mjs`.
+2. Run the CI checks locally: `bun install --frozen-lockfile && bun run lint && bun run test && bun run smoke`.
 3. Commit, then tag and push **only the tag** (or push the commit and the tag once authorised):
 
    ```bash
-   git tag -a v0.1.0 -m "Parley 0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.0.1 -m "Parley 0.0.1"
+   git push origin v0.0.1
    ```
 
    Pushing the tag is what triggers the Release workflow and publishes the GitHub Release. The agent must not do this step.
@@ -119,7 +120,7 @@ A manual **Run workflow** on a branch exercises both builds without publishing a
 ### Android
 
 ```bash
-adb install -r parley-0.1.0-arm64.apk
+adb install -r parley-0.0.1-arm64.apk
 ```
 
 Or copy the APK to the phone and tap it; allow "Install unknown apps" for the file manager or browser when prompted. If an older build with a different signing key is installed, uninstall it first (`adb uninstall app.parley.translate`). The APK declares `RECORD_AUDIO`; the permission is requested on first use of the microphone.
@@ -137,8 +138,8 @@ Because the IPA is re-signed per user, it has no distribution certificate, no Ap
 
 ## Local builds
 
-- Android debug APK (WSL `arch`, Docker): `npm run build:apk`. It builds `parley-android-builder:local` from `app/android-builder.Dockerfile` if missing, generates `tmp/parley-debug.keystore`, and writes `tmp/parley-<version>-arm64-debug.apk`.
-- The first build on a fresh machine downloads the Android SDK/NDK and Node (about 2 GB) and takes several minutes. The workflow rebuilds the image on every run; move it to GHCR if releases become frequent.
+- Android debug APK (WSL `arch`, Docker): `bun run build:apk`. It builds `parley-android-builder:local` from `app/android-builder.Dockerfile` if missing, generates `tmp/parley-debug.keystore`, and writes `tmp/parley-<version>-arm64-debug.apk`.
+- The first build on a fresh machine pulls the Rust and Bun images and downloads the Android SDK/NDK (about 2 GB) and takes several minutes. The workflow rebuilds the image on every run; move it to GHCR if releases become frequent.
 - iOS builds require macOS with Xcode; `tauri ios build --no-sign` cannot run on Windows or Linux.
 
 ## Secrets and repository hygiene

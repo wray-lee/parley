@@ -1,6 +1,6 @@
 # Server Host deployment
 
-The Node Server Host serves the web client and proxies to no external service
+The Bun Server Host serves the web client and proxies to no external service
 in Demo Mode. Caddy terminates HTTPS: an internal CA by default, Let's Encrypt
 when `PUBLIC_DOMAIN` is set.
 
@@ -67,17 +67,18 @@ terminate TLS with a tunnel and leave `PUBLIC_DOMAIN` empty:
   (quick tunnel) or a named tunnel to the same origin. Cloudflare terminates
   TLS with a publicly trusted certificate.
 
-Both alternatives assume the Node host is reachable on `127.0.0.1:3000`; they
+Both alternatives assume the Bun host is reachable on `127.0.0.1:3000`; they
 replace the Caddy service rather than running in front of it. This paragraph is
 the input for ticket 19.
 
 ## Bare metal (no Docker)
 
-The same app and the same environment variables, Node 24 only:
+The same app and the same environment variables; Bun ≥ 1.4 runtime and
+dependencies:
 
 ```sh
-npm ci --omit=dev
-node --env-file-if-exists=.env hosts/node/server.js   # or: npm start
+bun install --production --frozen-lockfile
+bun run start      # or: bun hosts/node/server.js
 ```
 
 It listens on `PORT` (default 3000) on all interfaces. Put Caddy, nginx or a
