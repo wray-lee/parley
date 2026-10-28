@@ -105,7 +105,7 @@ This builds a debug-signed arm64 APK at `tmp/parley-<version>-arm64-debug.apk`; 
 
 The IPA is built unsigned on a macOS runner by the release workflow (push a `v*` tag, or run Actions → Release) and is installed with AltStore/SideStore. The macOS job has not yet been exercised, so treat the first IPA build as unverified. Release signing is covered in [`docs/release.md`](docs/release.md). The APK/IPA are not published to an app store.
 
-In the app, the **Settings** button picks the translator Preset, ASR Provider and TTS Provider, and stores keys in the OS keystore. With no translator/ASR key, the app stays in Demo Mode with the DEMO banner.
+In the app, the **Settings** button picks the translator Preset, ASR Provider and TTS Provider, and stores keys in the OS keystore. Translator options also include a **Base URL** override (required for `custom`, which also needs a **Model**), a **Model** override for any Preset, and **Extra request fields (JSON)** with the same rules as `LLM_EXTRA_BODY`. Plain-http Base URLs are limited to loopback and private LAN IPv4 addresses; other hosts need https. With no translator/ASR key, the app stays in Demo Mode with the DEMO banner.
 
 ### 3. Server Host with real Providers
 
@@ -144,7 +144,7 @@ The translator is any OpenAI-compatible endpoint. A Preset supplies the base URL
 | `dashscope` | China (Alibaba Cloud, mainland-reachable) | Unverified — assume yes | Free-quota policy not verified. |
 | `openrouter` | Global router | Free models may | Pick a paid model to opt out. |
 | `ollama` | Your machine | No | No key; `LLM_BASE_URL` defaults to `http://localhost:11434/v1`. |
-| `custom` | Your endpoint | Depends on the endpoint | Requires `LLM_BASE_URL`; add `LLM_MODEL` unless it has a default. |
+| `custom` | Your endpoint | Depends on the endpoint | Requires `LLM_BASE_URL` and `LLM_MODEL`. |
 | `mistral` | EU (France) | May train (free tier) | — |
 | `deepseek` | China (mainland-reachable) | Unverified — assume yes | — |
 | `zhipu` | China (mainland-reachable) | May train (free model tier) | `glm-4-flash`. |
@@ -161,7 +161,7 @@ Some OpenAI-compatible endpoints take parameters beyond the standard ones. Set `
 LLM_EXTRA_BODY={"top_k":20}
 ```
 
-Parley's own `model`, `messages` and `stream` fields always win, so the object cannot change them. Invalid JSON or a non-object is rejected with an error naming `LLM_EXTRA_BODY` when the translator Provider is created. This is configured on the Server Host only; the Device Host in-app settings do not expose it.
+Parley's own `model`, `messages` and `stream` fields always win, so the object cannot change them. Invalid JSON or a non-object is rejected with an error naming `LLM_EXTRA_BODY` when the translator Provider is created. Set `LLM_EXTRA_BODY` on the Server Host, or **Extra request fields (JSON)** in the app's Settings; both accept only a JSON object and merge identically.
 
 ASR is `ASR_PROVIDER` = `deepgram` (cloud), `paraformer` (China), `whisperlivekit` (local) or `mock`. TTS is `TTS_PROVIDER` = `system` (OS/browser speech, no audio from the server), `kokoro`, `azure`, `edge` (unofficial), `cosyvoice` (stub: fails with a clear error) or `mock`.
 

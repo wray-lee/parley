@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Shell default: native networking for the Device Host adapter. HTTPS Provider hosts are allowed; plain HTTP only for loopback (local Ollama-style endpoints).",
+  "description": "Shell default: native networking for the Device Host adapter. HTTPS is allowed anywhere; plain HTTP only for loopback and private LAN IPv4 (10/8, 127/8, 169.254/16, 172.16/12, 192.168/16) so LAN OpenAI-compatible gateways work. The Android release manifest keeps usesCleartextTraffic=false because Provider traffic goes through the Rust HTTP plugin's raw sockets, not the WebView/Java networking stack, so Android's cleartext policy does not apply.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -9,7 +9,7 @@
       "allow": [
         { "url": "https://*" },
         { "url": "http://localhost:*" },
-        { "url": "http://127.0.0.1:*" }
+        { "url": "http://(10\\.[0-9.]+|127\\.[0-9.]+|169\\.254\\.[0-9.]+|172\\.(?:1[6-9]|2[0-9]|3[01])\\.[0-9.]+|192\\.168\\.[0-9.]+):*" }
       ]
     },
     "websocket:default",

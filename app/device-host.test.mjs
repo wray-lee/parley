@@ -2,7 +2,7 @@
 // in-page socket, drive the bundled sample, and require a DEMO-labelled Segment
 // plus a Segment log.
 
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -35,10 +35,12 @@ const sample = JSON.parse(await readFile(path.join(DIST, 'samples', 'placeholder
 function connect() {
   const ws = new globalThis.WebSocket('ws://device-host/ws');
   const messages = [];
+  const errors = [];
   ws.addEventListener('message', (event) => {
     messages.push(typeof event.data === 'string' ? JSON.parse(event.data) : { type: 'binary' });
   });
-  return { ws, messages };
+  ws.addEventListener('error', (event) => errors.push(event));
+  return { ws, messages, errors };
 }
 
 async function waitFor(predicate, timeoutMs = 5000) {
@@ -49,12 +51,14 @@ async function waitFor(predicate, timeoutMs = 5000) {
   }
 }
 
-test('Device Host runs the bundled sample to a DEMO Segment', async (t) => {
-  // bun test shares one process across files; a leaked fetch stub breaks later tests.
-  t.after(() => {
-    globalThis.fetch = realFetch;
-    return rm(DIST, { recursive: true, force: true });
-  });
+// bun test shares one process across files; a leaked fetch stub breaks later tests.
+after(async () => {
+  globalThis.fetch = realFetch;
+  delete globalThis.localStorage;
+  await rm(DIST, { recursive: true, force: true });
+});
+
+test('Device Host runs the bundled sample to a DEMO Segment', async () => {
   const { ws, messages } = connect();
   await waitFor(() => messages.some((message) => message.type === 'hello'));
   const hello = messages.find((message) => message.type === 'hello');
@@ -86,5 +90,19 @@ test('Device Host runs the bundled sample to a DEMO Segment', async (t) => {
   assert.match(segment.tgt, /^\[DEMO\] /);
   assert.ok(messages.some((message) => message.type === 'binary'), 'TTS chunk is delivered');
   assert.equal(globalThis.__parleyLog?.[0]?.seg_id, 1);
+  ws.close();
+});
+
+test('custom Preset without a Base URL reports an error instead of Demo Mode', async () => {
+  globalThis.localStorage = {
+    getItem: (key) =>
+      key === 'parley.settings.v1' ? JSON.stringify({ translatorPreset: 'custom' }) : null,
+    setItem: () => {},
+  };
+  await import(`${pathToFileURL(path.join(DIST, 'device-host.js')).href}?custom=1`);
+  const { ws, messages, errors } = connect();
+  await waitFor(() => errors.length > 0);
+  assert.match(errors[0].message, /Base URL/);
+  assert.equal(messages.some((message) => message.type === 'hello'), false);
   ws.close();
 });

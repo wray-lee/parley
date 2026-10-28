@@ -105,7 +105,7 @@ bun run build:apk
 
 IPA はリリースワークフローが macOS ランナー上で未署名でビルドし（`v*` タグを push するか、Actions → Release を実行）、AltStore/SideStore でインストールします。macOS ジョブはまだ実行されたことがないため、最初の IPA ビルドは未検証とお考えください。リリース署名については [`docs/release.md`](docs/release.md) で説明しています。APK/IPA はアプリストアでは公開されません。
 
-アプリでは、**Settings** ボタンで翻訳 Preset、ASR Provider、TTS Provider を選択し、キーを OS のキーストアに保存します。翻訳／ASR キーがない場合、アプリは DEMO バナーのまま Demo Mode で動作します。
+アプリでは、**Settings** ボタンで翻訳 Preset、ASR Provider、TTS Provider を選択し、キーを OS のキーストアに保存します。翻訳のオプションには **Base URL** の上書き（`custom` では必須で、**Model** も必要）、任意の Preset の **Model** 上書き、`LLM_EXTRA_BODY` と同じ規則の **Extra request fields (JSON)** もあります。平文 http の Base URL はループバックとプライベート LAN の IPv4 アドレスに限られ、それ以外のホストには https が必要です。翻訳／ASR キーがない場合、アプリは DEMO バナーのまま Demo Mode で動作します。
 
 ### 3. 実際の Provider を使う Server Host
 
@@ -144,7 +144,7 @@ Let's Encrypt のためには、ポート 80 と 443 がインターネットか
 | `dashscope` | 中国（Alibaba Cloud、本土から到達可能） | 未確認 — ありと仮定 | 無料枠の方針は未確認。 |
 | `openrouter` | グローバルルーター | 無料モデルは学習する可能性あり | 有料モデルを選ぶと回避できます。 |
 | `ollama` | 自分のマシン | いいえ | キー不要。`LLM_BASE_URL` の既定値は `http://localhost:11434/v1`。 |
-| `custom` | 自分のエンドポイント | エンドポイント次第 | `LLM_BASE_URL` が必要。既定モデルがなければ `LLM_MODEL` も設定。 |
+| `custom` | 自分のエンドポイント | エンドポイント次第 | `LLM_BASE_URL` と `LLM_MODEL` が必要です。 |
 | `mistral` | EU（フランス） | 学習する可能性あり（無料枠） | — |
 | `deepseek` | 中国（本土から到達可能） | 未確認 — ありと仮定 | — |
 | `zhipu` | 中国（本土から到達可能） | 学習する可能性あり（無料モデル枠） | `glm-4-flash`。 |
@@ -161,7 +161,7 @@ OpenAI 互換エンドポイントの中には、標準以外のパラメータ�
 LLM_EXTRA_BODY={"top_k":20}
 ```
 
-Parley 自身の `model`、`messages`、`stream` フィールドが常に優先されるため、このオブジェクトでそれらを変更することはできません。無効な JSON やオブジェクト以外の値は、翻訳 Provider の作成時に `LLM_EXTRA_BODY` を示すエラーで拒否されます。これは Server Host でのみ設定できます。Device Host のアプリ内設定では公開されていません。
+Parley 自身の `model`、`messages`、`stream` フィールドが常に優先されるため、このオブジェクトでそれらを変更することはできません。無効な JSON やオブジェクト以外の値は、翻訳 Provider の作成時に `LLM_EXTRA_BODY` を示すエラーで拒否されます。Server Host では `LLM_EXTRA_BODY`、アプリでは Settings の **Extra request fields (JSON)** で設定します。どちらも JSON オブジェクトのみを受け付け、マージ方法は同じです。
 
 ASR は `ASR_PROVIDER` = `deepgram`（クラウド）、`paraformer`（中国）、`whisperlivekit`（ローカル）、`mock` のいずれかです。TTS は `TTS_PROVIDER` = `system`（OS／ブラウザの音声合成。サーバーから音声は送られません）、`kokoro`、`azure`、`edge`（非公式）、`cosyvoice`（スタブ: 明確なエラーで失敗）、`mock` のいずれかです。
 

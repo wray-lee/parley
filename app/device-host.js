@@ -54,14 +54,9 @@ function loadHost() {
 const settings = readSettings();
 const keyStorePromise = loadKeyStore({ warn: (line) => console.warn(line) });
 
-// A custom endpoint needs base URL/model fields the app does not offer.
-const selectablePresets = Object.fromEntries(
-  Object.entries(PRESETS).filter(([, preset]) => preset.baseUrl && preset.model),
-);
-
 mountSettings({
   keyStore: keyStorePromise,
-  presets: selectablePresets,
+  presets: PRESETS,
   onSaved: () => globalThis.location?.reload(),
 });
 
@@ -84,8 +79,10 @@ async function createProviders(sample) {
     keyStore.get(SECRET_KEYS.paraformer),
     keyStore.get(SECRET_KEYS.azure),
   ]);
-  const selected = PRESETS[current.translatorPreset];
-  const preset = selected?.baseUrl && selected?.model ? selected : PRESETS[DEFAULT_PRESET];
+  const preset = PRESETS[current.translatorPreset] ?? PRESETS[DEFAULT_PRESET];
+  if (preset.id === 'custom' && !current.translatorBaseUrl) {
+    throw new Error('The custom Preset needs a Base URL. Open Settings and set one.');
+  }
 
   // No translator key means Demo Mode, exactly as the Server Host behaves.
   if (preset.requiresKey && !llmKey) {
@@ -97,7 +94,10 @@ async function createProviders(sample) {
 
   const translator = await createProvider('translator', 'openai', {
     preset: preset.id,
+    baseUrl: current.translatorBaseUrl,
     apiKey: llmKey || '',
+    model: current.translatorModel,
+    extraBody: current.translatorExtraBody,
     fetch: (await platform()).fetch,
   });
 

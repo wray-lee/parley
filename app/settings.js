@@ -16,6 +16,9 @@ export const SECRET_KEYS = Object.freeze({
 export const DEFAULT_SETTINGS = Object.freeze({
   mode: 'device',
   translatorPreset: 'groq',
+  translatorBaseUrl: '',
+  translatorModel: '',
+  translatorExtraBody: '',
   asrProvider: 'deepgram',
   ttsProvider: 'system',
   azureRegion: '',
@@ -61,6 +64,75 @@ export function writeSettings(values, store = defaultStorage()) {
     // a read-only WebView still gets a working in-memory session
   }
   return clean;
+}
+
+function isPrivateHttpHost(hostname) {
+  if (hostname === 'localhost') return true;
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
+  if (!match) return false;
+  const octets = match.slice(1).map(Number);
+  if (octets.some((octet) => octet > 255)) return false;
+  const [a, b] = octets;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31)
+  );
+}
+
+// Mirrors the Tauri HTTP scope: https anywhere, plain http only on loopback/LAN.
+export function normalizeBaseUrl(value, presetId = '') {
+  const baseUrl = String(value ?? '')
+    .trim()
+    .replace(/\/+$/, '');
+  if (!baseUrl) {
+    if (presetId === 'custom') throw new Error('The custom Preset needs a Base URL.');
+    return '';
+  }
+  let parsed;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error('Base URL must be a full http:// or https:// URL.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Base URL must start with http:// or https://.');
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('Base URL must not include credentials.');
+  }
+  if (parsed.search || parsed.hash || /[?#]/.test(baseUrl)) {
+    throw new Error('Base URL must not include a query or fragment.');
+  }
+  if (parsed.protocol === 'http:' && !isPrivateHttpHost(parsed.hostname)) {
+    throw new Error(
+      'Plain http is allowed only for localhost or private LAN IPv4 addresses; use https:// for other hosts.',
+    );
+  }
+  return baseUrl;
+}
+
+export function normalizeModel(value, presetId = '') {
+  const model = String(value ?? '').trim();
+  if (!model && presetId === 'custom') throw new Error('The custom Preset needs a Model.');
+  return model;
+}
+
+export function normalizeExtraBody(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Extra request fields must be valid JSON: ${error.message}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Extra request fields must be a JSON object.');
+  }
+  return text;
 }
 
 const STYLE = `
@@ -154,7 +226,10 @@ export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {
     Object.values(presets).map((preset) => [preset.id, `${preset.id} — ${preset.note ?? ''}`]),
     DEFAULT_SETTINGS.translatorPreset,
   );
+  const translatorBaseUrl = textInput('', { placeholder: 'Preset default; required for custom' });
+  const translatorModel = textInput('', { placeholder: 'Preset default' });
   const llmKey = textInput('', { type: 'password', placeholder: 'Groq / OpenAI-compatible key' });
+  const translatorExtraBody = textInput('', { placeholder: '{"top_k":20}' });
   const asrProvider = select(
     [
       ['deepgram', 'Deepgram (cloud)'],
@@ -182,6 +257,19 @@ export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {
   const status = document.createElement('p');
   status.className = 'parley-status';
 
+  function syncPresetHelp() {
+    const preset = presets[translatorPreset.value];
+    translatorBaseUrl.placeholder =
+      preset?.baseUrl ||
+      (translatorPreset.value === 'custom'
+        ? 'https://gateway.example.com/v1'
+        : 'Optional override');
+    translatorModel.placeholder =
+      preset?.model ||
+      (translatorPreset.value === 'custom' ? 'Required for custom' : 'Optional override');
+  }
+  translatorPreset.addEventListener('change', syncPresetHelp);
+
   const providerRow = document.createElement('div');
   providerRow.className = 'parley-row';
   providerRow.append(
@@ -189,7 +277,10 @@ export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {
     field('Server URL', serverUrl),
     field('Access Token', serverToken),
     field('Translator Preset', translatorPreset),
+    field('Base URL', translatorBaseUrl),
+    field('Model', translatorModel),
     field('Translator API Key', llmKey),
+    field('Extra request fields (JSON)', translatorExtraBody),
     field('ASR Provider', asrProvider),
     field('Deepgram API Key', deepgramKey),
     field('Paraformer API Key', paraformerKey),
@@ -220,6 +311,10 @@ export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {
     mode.value = settings.mode;
     serverUrl.value = settings.serverUrl;
     translatorPreset.value = settings.translatorPreset;
+    translatorBaseUrl.value = settings.translatorBaseUrl;
+    translatorModel.value = settings.translatorModel;
+    translatorExtraBody.value = settings.translatorExtraBody;
+    syncPresetHelp();
     asrProvider.value = settings.asrProvider;
     ttsProvider.value = settings.ttsProvider;
     azureRegion.value = settings.azureRegion;
@@ -252,9 +347,13 @@ export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    status.textContent = '';
     const values = {
       mode: mode.value,
       translatorPreset: translatorPreset.value,
+      translatorBaseUrl: '',
+      translatorModel: '',
+      translatorExtraBody: '',
       asrProvider: asrProvider.value,
       ttsProvider: ttsProvider.value,
       azureRegion: azureRegion.value.trim(),
@@ -267,6 +366,21 @@ export function mountSettings({ keyStore, presets = {}, onSaved = () => {} } = {
         if (!['http:', 'https:', 'ws:', 'wss:'].includes(parsed.protocol)) throw new Error();
       } catch {
         status.textContent = 'Server URL must start with http://, https://, ws:// or wss://.';
+        return;
+      }
+      values.translatorBaseUrl = translatorBaseUrl.value.trim();
+      values.translatorModel = translatorModel.value.trim();
+      values.translatorExtraBody = translatorExtraBody.value.trim();
+    } else {
+      try {
+        values.translatorBaseUrl = normalizeBaseUrl(
+          translatorBaseUrl.value,
+          values.translatorPreset,
+        );
+        values.translatorModel = normalizeModel(translatorModel.value, values.translatorPreset);
+        values.translatorExtraBody = normalizeExtraBody(translatorExtraBody.value);
+      } catch (error) {
+        status.textContent = error.message;
         return;
       }
     }

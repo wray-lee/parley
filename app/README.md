@@ -29,7 +29,8 @@ All Tauri API use is confined to three thin adapters:
 - `device-host.js` — in-page Device Host; wires Providers, TTS speech and the
   WebSocket shim, or redirects to a Server Host.
 - `platform-tauri.js` — Tauri HTTP/WebSocket platform adapter.
-- `settings.js` — injected settings screen (Presets, keys, server mode).
+- `settings.js` — injected settings screen (Presets, Base URL/model/extra
+  JSON, keys, server mode).
 - `keystore.js` — secure-keystore adapter with the memory fallback.
 - `tts-speaker.js` — system-TTS plugin adapter with the Web Speech fallback.
 - `speech-gate.js` — app-side mic gate for system TTS in Converse.
@@ -50,11 +51,15 @@ All Tauri API use is confined to three thin adapters:
 The **Settings** button (bottom-right) chooses the translator Preset, the ASR
 Provider (Deepgram, Paraformer, mock) and the TTS Provider (system, Azure,
 Kokoro, mock), and switches between Device mode and a Server Host URL plus
-Access Token. Saving reloads the app.
+Access Token. The translator section also takes an optional **Base URL**
+override (required for the `custom` Preset, which also needs a **Model**), a
+**Model** override for any Preset, and **Extra request fields (JSON)**, which
+follows the Server Host's `LLM_EXTRA_BODY` rules. Saving reloads the app.
 
 - API keys and the server token are written **only** through the secure
-  keystore. Non-secret choices (Presets, provider names, server URL) are the
-  only values in `localStorage`; secret values never touch WebView storage.
+  keystore. Non-secret choices (Presets, provider names, server URL, Base URL,
+  model and extra request JSON) are the only values in `localStorage`; secret
+  values never touch WebView storage.
 - The keystore plugin is 0.0.3-beta.1. If it fails, the adapter falls back to an
   in-memory store for the current session and the settings screen says so.
   Keys are then lost on exit and are still never written to browser storage.
@@ -67,8 +72,13 @@ Access Token. Saving reloads the app.
 ## Provider transport details
 
 - Translator, Azure TTS and Kokoro calls go through the Tauri HTTP plugin. The
-  capability allows `https://*` and plain HTTP only to loopback hosts; the
-  local model stack stays on the Server Host (ADR-0001).
+  capability allows `https://*` and plain HTTP only to loopback and private LAN
+  IPv4 ranges (10/8, 127/8, 169.254/16, 172.16/12, 192.168/16), so an Ollama or
+  other gateway at e.g. `http://192.168.1.10:11434/v1` works. Android release
+  builds keep `usesCleartextTraffic=false`: the plugin's requests run in Rust
+  over raw sockets, not through the WebView/Java networking stack, so that
+  policy does not apply. The local model stack stays on the Server Host
+  (ADR-0001).
 - Deepgram uses the Tauri WebSocket plugin with an
   `Authorization: Token …` header. The plugin has no subprotocol support, which
   is why the Device Host uses header auth rather than the browser's `token`
@@ -136,8 +146,8 @@ APK and its sha256
 land in `tmp/`:
 
 ```
-tmp/parley-0.0.1-arm64-debug.apk
-tmp/parley-0.0.1-arm64-debug.apk.sha256
+tmp/parley-0.0.2-arm64-debug.apk
+tmp/parley-0.0.2-arm64-debug.apk.sha256
 ```
 
 Docker images pulled by the build: `oven/bun:1.4.3` (Bun, copied into the
@@ -171,8 +181,8 @@ been run. They are the acceptance procedure for tickets 16 and 17.
 
 ### Demo Mode (ticket 16)
 
-1. Transfer `tmp/parley-0.0.1-arm64-debug.apk` to the Android phone (USB,
-   Tailscale, or `adb install -r F:\Projects\translation\tmp\parley-0.0.1-arm64-debug.apk`).
+1. Transfer `tmp/parley-0.0.2-arm64-debug.apk` to the Android phone (USB,
+   Tailscale, or `adb install -r F:\Projects\translation\tmp\parley-0.0.2-arm64-debug.apk`).
 2. Allow install from unknown sources for the file manager, then install.
 3. Open **Parley**. The header shows `ready` and the DEMO banner is visible
    because no keys are stored yet.

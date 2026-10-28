@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   DEFAULT_SETTINGS,
+  normalizeBaseUrl,
+  normalizeExtraBody,
+  normalizeModel,
   readSettings,
   SETTINGS_KEY,
   writeSettings,
@@ -51,4 +54,78 @@ test('corrupt storage yields defaults instead of throwing', () => {
   const storage = memoryStorage();
   storage.data.set(SETTINGS_KEY, '{not json');
   assert.deepEqual(readSettings(storage), { ...DEFAULT_SETTINGS });
+});
+
+test('custom translator fields round-trip without leaking the key', () => {
+  const storage = memoryStorage();
+  writeSettings(
+    {
+      ...DEFAULT_SETTINGS,
+      translatorPreset: 'custom',
+      translatorBaseUrl: 'https://gateway.example.com/v1',
+      translatorModel: 'my-model',
+      translatorExtraBody: '{"top_k":20}',
+      llmKey: 'very-secret-value',
+    },
+    storage,
+  );
+  const settings = readSettings(storage);
+  assert.equal(settings.translatorPreset, 'custom');
+  assert.equal(settings.translatorBaseUrl, 'https://gateway.example.com/v1');
+  assert.equal(settings.translatorModel, 'my-model');
+  assert.equal(settings.translatorExtraBody, '{"top_k":20}');
+  assert.equal(storage.data.get(SETTINGS_KEY).includes('very-secret-value'), false);
+});
+
+test('base URL is trimmed, validated and required for custom', () => {
+  assert.equal(
+    normalizeBaseUrl(' https://gateway.example.com/v1/ ', 'groq'),
+    'https://gateway.example.com/v1',
+  );
+  assert.equal(normalizeBaseUrl('', 'groq'), '');
+  assert.throws(() => normalizeBaseUrl('', 'custom'), /Base URL/);
+  assert.throws(() => normalizeBaseUrl('gateway.example.com/v1', 'custom'), /http/);
+  assert.throws(() => normalizeBaseUrl('ftp://gateway.example.com/v1', 'custom'), /http/);
+  assert.throws(() => normalizeBaseUrl('http://example.com/v1', 'custom'), /https/);
+  assert.throws(
+    () => normalizeBaseUrl('https://user:pass@gateway.example.com/v1', 'custom'),
+    /credentials/,
+  );
+  assert.throws(
+    () => normalizeBaseUrl('https://gateway.example.com/v1?key=1', 'custom'),
+    /query/,
+  );
+  assert.throws(
+    () => normalizeBaseUrl('https://gateway.example.com/v1#', 'custom'),
+    /query/,
+  );
+  assert.equal(
+    normalizeBaseUrl('http://localhost:11434/v1', 'custom'),
+    'http://localhost:11434/v1',
+  );
+  assert.equal(
+    normalizeBaseUrl('http://192.168.1.10:11434/v1', 'custom'),
+    'http://192.168.1.10:11434/v1',
+  );
+  assert.equal(
+    normalizeBaseUrl('http://172.31.5.4:1234/v1', 'custom'),
+    'http://172.31.5.4:1234/v1',
+  );
+  assert.throws(() => normalizeBaseUrl('http://172.32.5.4:1234/v1', 'custom'), /https/);
+  assert.throws(() => normalizeBaseUrl('http://192.168.1.10.evil.com/v1', 'custom'), /https/);
+});
+
+test('model is optional except for custom', () => {
+  assert.equal(normalizeModel('  my-model  ', 'groq'), 'my-model');
+  assert.equal(normalizeModel('', 'groq'), '');
+  assert.throws(() => normalizeModel('', 'custom'), /Model/);
+});
+
+test('extra request fields must be a JSON object', () => {
+  assert.equal(normalizeExtraBody(''), '');
+  assert.equal(normalizeExtraBody(' {"top_k":20} '), '{"top_k":20}');
+  assert.throws(() => normalizeExtraBody('{not json'), /JSON/);
+  for (const value of ['[]', 'null', '"x"', '42']) {
+    assert.throws(() => normalizeExtraBody(value), /object/);
+  }
 });

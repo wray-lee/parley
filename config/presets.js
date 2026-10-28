@@ -63,7 +63,7 @@ export const PRESETS = {
     region: 'Local machine; no text leaves it',
     docs: 'https://ollama.com/blog/openai-compatibility',
     requiresKey: false,
-    note: 'No key. Override LLM_BASE_URL when Ollama runs on another host.',
+    note: 'No key. Set the Base URL when Ollama runs on another host.',
   },
   custom: {
     id: 'custom',
@@ -73,7 +73,7 @@ export const PRESETS = {
     region: 'Your own endpoint',
     docs: 'https://platform.openai.com/docs/api-reference/chat',
     requiresKey: false,
-    note: 'Requires LLM_BASE_URL; add LLM_MODEL unless the endpoint has a default.',
+    note: 'Requires a Base URL and a Model.',
   },
   mistral: {
     id: 'mistral',

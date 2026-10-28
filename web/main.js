@@ -58,7 +58,7 @@ function connect() {
   ws.binaryType = 'arraybuffer';
   ws.addEventListener('open', () => setStatus('connected'));
   ws.addEventListener('close', () => setStatus('disconnected'));
-  ws.addEventListener('error', () => toast('WebSocket connection failed'));
+  ws.addEventListener('error', (event) => toast(event?.message ?? 'WebSocket connection failed'));
   ws.addEventListener('message', (event) => {
     if (typeof event.data === 'string') {
       onMessage(JSON.parse(event.data));

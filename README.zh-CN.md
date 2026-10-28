@@ -105,7 +105,7 @@ bun run build:apk
 
 IPA 由发布工作流在 macOS runner 上以未签名方式构建（推送 `v*` 标签，或运行 Actions → Release），并使用 AltStore/SideStore 安装。该 macOS 任务尚未实际运行过，因此首次 IPA 构建应视为未经验证。发布签名说明见 [`docs/release.md`](docs/release.md)。APK/IPA 不会发布到应用商店。
 
-在 App 中，**Settings** 按钮用于选择翻译器 Preset、ASR Provider 和 TTS Provider，并把 Key 保存在操作系统钥匙串中。没有翻译器/ASR Key 时，App 会停留在 Demo Mode，并显示 DEMO 横幅。
+在 App 中，**Settings** 按钮用于选择翻译器 Preset、ASR Provider 和 TTS Provider，并把 Key 保存在操作系统钥匙串中。翻译器选项还包括 **Base URL** 覆盖（`custom` 必填，且还需要 **Model**）、任意 Preset 的 **Model** 覆盖，以及与 `LLM_EXTRA_BODY` 规则相同的 **Extra request fields (JSON)**。明文 http 的 Base URL 仅限回环和局域网私有 IPv4 地址，其他主机需要 https。没有翻译器/ASR Key 时，App 会停留在 Demo Mode，并显示 DEMO 横幅。
 
 ### 3. 带真实 Provider 的 Server Host
 
@@ -144,7 +144,7 @@ docker compose -f deploy/compose.yaml --env-file .env up -d --build
 | `dashscope` | 中国大陆可达（阿里云） | 未核实——按“会训练”处理 | 免费额度政策未核实。 |
 | `openrouter` | 全球路由 | 免费模型可能会训练 | 选择付费模型即可避免。 |
 | `ollama` | 你的机器 | 否 | 无需 Key；`LLM_BASE_URL` 默认为 `http://localhost:11434/v1`。 |
-| `custom` | 你的端点 | 取决于该端点 | 需要 `LLM_BASE_URL`；除非它有默认值，否则还需 `LLM_MODEL`。 |
+| `custom` | 你的端点 | 取决于该端点 | 需要 `LLM_BASE_URL` 和 `LLM_MODEL`。 |
 | `mistral` | 欧盟（法国） | 可能训练（免费层） | — |
 | `deepseek` | 中国大陆可达 | 未核实——按“会训练”处理 | — |
 | `zhipu` | 中国大陆可达 | 可能训练（免费模型层） | `glm-4-flash`。 |
@@ -161,7 +161,7 @@ docker compose -f deploy/compose.yaml --env-file .env up -d --build
 LLM_EXTRA_BODY={"top_k":20}
 ```
 
-Parley 自身的 `model`、`messages` 和 `stream` 字段始终优先，因此该对象无法修改它们。若 JSON 无效或不是对象，创建翻译 Provider 时会报错并指明 `LLM_EXTRA_BODY`。此设置仅在 Server Host 上配置；Device Host 的 App 内设置不暴露它。
+Parley 自身的 `model`、`messages` 和 `stream` 字段始终优先，因此该对象无法修改它们。若 JSON 无效或不是对象，创建翻译 Provider 时会报错并指明 `LLM_EXTRA_BODY`。在 Server Host 上设置 `LLM_EXTRA_BODY`，或在 App 的 Settings 中使用 **Extra request fields (JSON)**；两者都只接受 JSON 对象，合并行为完全相同。
 
 ASR 由 `ASR_PROVIDER` 选择：`deepgram`（云端）、`paraformer`（中国）、`whisperlivekit`（本地）或 `mock`。TTS 由 `TTS_PROVIDER` 选择：`system`（操作系统/浏览器语音，服务端不发送音频）、`kokoro`、`azure`、`edge`（非官方）、`cosyvoice`（桩实现：会以明确的错误失败）或 `mock`。
 
