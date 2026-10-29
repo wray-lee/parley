@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createSession } from '../core/session.js';
 import { createRegistry } from '../core/packs-registry.js';
 import { makeClock, pcmFrame, scriptedAsr, scriptedTranslator, scriptedTts } from './helpers/fakes.js';
+import { checkTrace, createTraceRecorder } from './helpers/trace.js';
 
 // The Forced Translation instruction is a prompt asset, never a code string.
 const FORCED_INSTRUCTION = readFileSync(
@@ -29,18 +30,40 @@ function build(overrides = {}) {
   ]);
   const translator = overrides.translator ?? scriptedTranslator(['translated-one']);
   const tts = overrides.tts ?? scriptedTts();
+  const registryValue = overrides.registry ?? registry();
+  const pairConfig = overrides.pairConfig ?? {};
+  const forcedInstruction = overrides.forcedInstruction ?? FORCED_INSTRUCTION;
+  const trace = overrides.trace
+    ? createTraceRecorder({
+        name: overrides.trace,
+        clock,
+        asr,
+        translator,
+        tts,
+        registry: registryValue,
+        pairConfig,
+        forcedInstruction,
+      })
+    : null;
   const events = [];
   const records = [];
   const session = createSession({
     providers: { asr, translator, tts },
     clock,
-    registry: overrides.registry ?? registry(),
-    pairConfig: overrides.pairConfig,
-    forcedInstruction: overrides.forcedInstruction ?? FORCED_INSTRUCTION,
-    emit: (event) => events.push(event),
-    log: (record) => records.push(record),
+    registry: registryValue,
+    pairConfig,
+    forcedInstruction,
+    emit: (event) => {
+      events.push(event);
+      trace?.output('event', { event });
+    },
+    log: (record) => {
+      records.push(record);
+      trace?.output('log', { record });
+    },
   });
-  return { session, clock, asr, translator, tts, events, records };
+  trace?.attachSession(session);
+  return { session, clock, asr, translator, tts, events, records, trace };
 }
 
 function start(session, src = 'zh', tgt = 'ja', mode = 'listen') {
@@ -965,4 +988,46 @@ test('the stop drain is bounded: a line after the timeout is dropped', async () 
   clock.advance(4000);
   await session.idle();
   assert.equal(events.filter((event) => event.type === 'segment').length, 0);
+});
+
+test('Listen Session Trace is the frozen oracle', async () => {
+  const asr = scriptedAsr([
+    { at: 20, events: [{ type: 'partial', text: 'one' }, { type: 'stable', text: 'one' }] },
+    { at: 400, events: [{ type: 'partial', text: 'two' }, { type: 'stable', text: 'two' }] },
+  ]);
+  const translator = scriptedTranslator(['translated-one', 'translated-two']);
+  const { session, clock, events, trace } = build({ asr, translator, trace: 'listen-basic' });
+  start(session);
+
+  await speechThenSilence(session, clock, 18);
+  await speechThenSilence(session, clock, 18);
+
+  assert.deepEqual(
+    events.filter((event) => event.type === 'segment').map((event) => event.src),
+    ['one', 'two'],
+  );
+  checkTrace(trace);
+});
+
+test('Listen live Session Trace records the v0.0.3 Gating divergence', async () => {
+  const asr = scriptedAsr(
+    [
+      { at: 20, events: [{ type: 'stable', text: 'one' }] },
+      { at: 420, events: [{ type: 'stable', text: 'two' }] },
+    ],
+    { acceptsLive: true },
+  );
+  const translator = scriptedTranslator(['translated-one', 'translated-two']);
+  const { session, clock, events, trace } = build({ asr, translator, trace: 'listen-live-gating' });
+  session.handleMessage({ type: 'start', mode: 'listen', src: 'zh', tgt: 'ja' });
+
+  await speechThenSilence(session, clock, 18);
+  await speechThenSilence(session, clock, 18);
+
+  assert.equal(
+    events.filter((event) => event.type === 'segment').length,
+    1,
+    'v0.0.3 withholds Listen live mic frames while audio TTS is pending',
+  );
+  checkTrace(trace);
 });

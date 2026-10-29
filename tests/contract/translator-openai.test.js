@@ -6,7 +6,7 @@ import path from 'node:path';
 import { create } from '../../core/providers/translator-openai.js';
 import { buildTranslatorRequest } from '../../core/translator-request.js';
 
-const FIXTURES = path.join(import.meta.dirname, 'fixtures', 'translator');
+const FIXTURES = path.join(import.meta.dirname, '..', '..', 'spec', 'fixtures', 'translator');
 const NAMES = ['groq', 'siliconflow', 'ollama'];
 
 async function loadFixture(name) {

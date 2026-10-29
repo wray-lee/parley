@@ -12,7 +12,7 @@ import { create } from '../../core/providers/tts-azure.js';
 import { loadConfig } from '../../hosts/node/config.js';
 
 const fixture = () =>
-  new Uint8Array(readFileSync(new URL('./fixtures/azure/ja.mp3', import.meta.url)));
+  new Uint8Array(readFileSync(new URL('../../spec/fixtures/azure/ja.mp3', import.meta.url)));
 
 function recorder(handler) {
   const requests = [];

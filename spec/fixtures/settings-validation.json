@@ -1,0 +1,60 @@
+{
+  "description": "Settings validation cases shared by the JS app, Dart client and Go core. Each case applies value/preset or settings, then expects either a return value or an error code.",
+  "baseUrl": [
+    { "value": " https://gateway.example.com/v1/ ", "preset": "groq", "expect": "https://gateway.example.com/v1" },
+    { "value": "", "preset": "groq", "expect": "" },
+    { "value": "", "preset": "custom", "error": "needsBaseUrl" },
+    { "value": "gateway.example.com/v1", "preset": "custom", "error": "invalidUrl" },
+    { "value": "ftp://gateway.example.com/v1", "preset": "custom", "error": "notHttp" },
+    { "value": "http://example.com/v1", "preset": "custom", "error": "plainHttp" },
+    { "value": "https://user:pass@gateway.example.com/v1", "preset": "custom", "error": "credentials" },
+    { "value": "https://gateway.example.com/v1?key=1", "preset": "custom", "error": "query" },
+    { "value": "https://gateway.example.com/v1#", "preset": "custom", "error": "query" },
+    { "value": "http://localhost:11434/v1", "preset": "custom", "expect": "http://localhost:11434/v1" },
+    { "value": "http://192.168.1.10:11434/v1", "preset": "custom", "expect": "http://192.168.1.10:11434/v1" },
+    { "value": "http://172.31.5.4:1234/v1", "preset": "custom", "expect": "http://172.31.5.4:1234/v1" },
+    { "value": "http://172.32.5.4:1234/v1", "preset": "custom", "error": "plainHttp" },
+    { "value": "http://192.168.1.10.evil.com/v1", "preset": "custom", "error": "plainHttp" }
+  ],
+  "model": [
+    { "value": "  my-model  ", "preset": "groq", "expect": "my-model" },
+    { "value": "", "preset": "groq", "expect": "" },
+    { "value": "", "preset": "custom", "error": "needsModel" }
+  ],
+  "extraBody": [
+    { "value": "", "expect": "" },
+    { "value": " {\"top_k\":20} ", "expect": "{\"top_k\":20}" },
+    { "value": "{not json", "error": "invalidJson" },
+    { "value": "[]", "error": "notObject" },
+    { "value": "null", "error": "notObject" },
+    { "value": "\"x\"", "error": "notObject" },
+    { "value": "42", "error": "notObject" }
+  ],
+  "localNetwork": {
+    "base": {
+      "mode": "device",
+      "translatorPreset": "groq",
+      "translatorBaseUrl": "https://api.groq.com/openai/v1",
+      "translatorModel": "",
+      "translatorExtraBody": "",
+      "asrProvider": "deepgram",
+      "ttsProvider": "system",
+      "azureRegion": "",
+      "kokoroUrl": "",
+      "serverUrl": ""
+    },
+    "cases": [
+      { "set": {}, "expect": false },
+      { "set": { "translatorBaseUrl": "http://192.168.1.10:11434/v1" }, "expect": true },
+      { "set": { "translatorBaseUrl": "https://[fd00::1]/v1" }, "expect": true },
+      { "set": { "translatorBaseUrl": "https://parley.local/v1" }, "expect": true },
+      { "set": { "translatorBaseUrl": "https://parley.home.arpa/v1" }, "expect": true },
+      { "set": { "translatorBaseUrl": "http://localhost:11434/v1" }, "expect": false },
+      { "set": { "translatorBaseUrl": "http://127.0.0.1:11434/v1" }, "expect": false },
+      { "set": { "ttsProvider": "kokoro", "kokoroUrl": "http://192.168.1.10:8880" }, "expect": true },
+      { "set": { "ttsProvider": "system", "kokoroUrl": "http://192.168.1.10:8880" }, "expect": false },
+      { "set": { "mode": "server", "serverUrl": "ws://10.0.0.5:8787" }, "expect": true },
+      { "set": { "mode": "server", "serverUrl": "wss://parley.example.com" }, "expect": false }
+    ]
+  }
+}

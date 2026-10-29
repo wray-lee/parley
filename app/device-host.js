@@ -5,7 +5,7 @@
 // them. Settings either build Providers here or redirect the client to a
 // Server Host.
 
-import { DEFAULT_PRESET, PRESETS } from './config/presets.js';
+import presetData from './config/presets.json' with { type: 'json' };
 import { createRegistry } from './core/packs-registry.js';
 import { createProvider } from './core/providers/index.js';
 import { createSession } from './core/session.js';
@@ -21,6 +21,8 @@ import {
 } from './settings.js';
 import { createSpeechGate } from './speech-gate.js';
 import { loadSystemSpeaker } from './tts-speaker.js';
+
+const { DEFAULT_PRESET, PRESETS } = presetData;
 
 async function readAsset(path) {
   const response = await fetch(path);

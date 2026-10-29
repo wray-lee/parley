@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { create, splitSentences } from '../../core/providers/tts-kokoro.js';
 
 const fixture = (name) =>
-  new Uint8Array(readFileSync(new URL(`./fixtures/kokoro/${name}`, import.meta.url)));
+  new Uint8Array(readFileSync(new URL(`../../spec/fixtures/kokoro/${name}`, import.meta.url)));
 
 function responseFrom(bytes, { status = 200, body = null, chunkSize = 97 } = {}) {
   if (body !== null) return new Response(body, { status });

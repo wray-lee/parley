@@ -5,6 +5,7 @@ import { createSession } from '../core/session.js';
 import { createRegistry } from '../core/packs-registry.js';
 import { create as createMockTts } from '../core/providers/tts-mock.js';
 import { makeClock, pcmFrame, scriptedTranslator, scriptedTts } from './helpers/fakes.js';
+import { checkTrace, createTraceRecorder } from './helpers/trace.js';
 
 // Two Directions: zh->ja is the user's ("me") Direction in Converse.
 function registry() {
@@ -54,18 +55,39 @@ function build(overrides = {}) {
   const asr = overrides.asr ?? scriptedStreams([]);
   const translator = overrides.translator ?? scriptedTranslator([]);
   const tts = overrides.tts ?? scriptedTts();
+  const registryValue = overrides.registry ?? registry();
+  const pairConfig = overrides.pairConfig ?? {};
+  const trace = overrides.trace
+    ? createTraceRecorder({
+        name: overrides.trace,
+        clock,
+        asr,
+        translator,
+        tts,
+        registry: registryValue,
+        pairConfig,
+        forcedInstruction: '',
+      })
+    : null;
   const events = [];
   const records = [];
   const session = createSession({
     providers: { asr, translator, tts },
     clock,
-    registry: overrides.registry ?? registry(),
-    pairConfig: overrides.pairConfig ?? {},
+    registry: registryValue,
+    pairConfig,
     forcedInstruction: '',
-    emit: (event) => events.push(event),
-    log: (record) => records.push(record),
+    emit: (event) => {
+      events.push(event);
+      trace?.output('event', { event });
+    },
+    log: (record) => {
+      records.push(record);
+      trace?.output('log', { record });
+    },
   });
-  return { session, clock, asr, translator, tts, events, records };
+  trace?.attachSession(session);
+  return { session, clock, asr, translator, tts, events, records, trace };
 }
 
 function startConverse(session, { src = 'zh', tgt = 'ja' } = {}) {
@@ -347,4 +369,29 @@ test('interleaved Directions share seg_ids but keep separate Rolling Contexts', 
     events.filter((event) => event.type === 'tts_end').map((event) => event.seg_id),
     [1, 3],
   );
+});
+
+test('Converse Session Trace is the frozen oracle', async () => {
+  const asr = scriptedStreams([
+    [{ at: 20, text: 'from me' }],
+    [{ at: 20, text: 'from them' }],
+  ]);
+  const translator = scriptedTranslator(['translated-me', 'translated-them']);
+  const { session, clock, events, trace } = build({ asr, translator, trace: 'converse-turns' });
+  startConverse(session);
+
+  await speakAndCut(session, clock);
+  session.handleMessage({ type: 'turn', who: 'them' });
+  session.handleMessage({ type: 'playback', seg_id: 1, state: 'end' });
+  clock.advance(500);
+  await speakAndCut(session, clock);
+
+  assert.deepEqual(
+    events.filter((event) => event.type === 'segment').map((event) => event.direction),
+    [
+      { src: 'zh', tgt: 'ja' },
+      { src: 'ja', tgt: 'zh' },
+    ],
+  );
+  checkTrace(trace);
 });

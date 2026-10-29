@@ -5,14 +5,23 @@ import { create } from '../../core/providers/translator-openai.js';
 import { createProvider, loadProvider } from '../../core/providers/index.js';
 import { createRegistry } from '../../core/packs-registry.js';
 import { createSession } from '../../core/session.js';
-import { DEFAULT_PRESET, PRESETS } from '../../config/presets.js';
+import presetData from '../../config/presets.json' with { type: 'json' };
+import previousPresetData from '../../spec/fixtures/presets-v0.0.3.json' with { type: 'json' };
 import { loadConfig } from '../../hosts/node/config.js';
+
+const { DEFAULT_PRESET, PRESETS } = presetData;
 
 async function readAll(translator, request = { system: 's', user: 'u' }) {
   const chunks = [];
   for await (const chunk of translator.translate(request)) chunks.push(chunk);
   return chunks.join('');
 }
+
+// spec/fixtures/presets-v0.0.3.json is the frozen v0.0.3 oracle, not a source:
+// config/presets.json is the only data the product reads.
+test('the JSON preset data is identical to the previous JS data', () => {
+  assert.deepEqual({ DEFAULT_PRESET, PRESETS }, previousPresetData);
+});
 
 test('presets carry the required data and a conservative free-tier flag', () => {
   assert.equal(DEFAULT_PRESET, 'groq');

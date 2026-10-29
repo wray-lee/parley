@@ -9,7 +9,8 @@
     "test": "bun test",
     "lint": "bun test tests/lint.test.js",
     "smoke": "bun scripts/demo-smoke.mjs",
-    "build:apk": "bun scripts/build-apk.mjs"
+    "build:apk": "bun scripts/build-apk.mjs",
+    "traces:record": "bun scripts/record-traces.mjs"
   },
   "dependencies": {
     "ws": "^8.22.0"

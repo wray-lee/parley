@@ -14,7 +14,7 @@ const VECTOR_TOKEN =
 
 function frames(name) {
   return JSON.parse(
-    readFileSync(new URL(`./fixtures/edge/${name}.frames.json`, import.meta.url), 'utf8'),
+    readFileSync(new URL(`../../spec/fixtures/edge/${name}.frames.json`, import.meta.url), 'utf8'),
   );
 }
 

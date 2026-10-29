@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   DEFAULT_SETTINGS,
@@ -11,6 +12,24 @@ import {
   SETTINGS_KEY,
   writeSettings,
 } from './settings.js';
+
+// Shared with the Dart client and the Go core: the cases are data, the error
+// code -> message mapping is each implementation's own.
+const VALIDATION = JSON.parse(
+  readFileSync(new URL('../spec/fixtures/settings-validation.json', import.meta.url), 'utf8'),
+);
+
+const ERROR_PATTERNS = {
+  needsBaseUrl: /Base URL/,
+  invalidUrl: /full http/,
+  notHttp: /start with http/,
+  plainHttp: /https/,
+  credentials: /credentials/,
+  query: /query/,
+  needsModel: /Model/,
+  invalidJson: /valid JSON/,
+  notObject: /JSON object/,
+};
 
 function memoryStorage() {
   const data = new Map();
@@ -79,111 +98,53 @@ test('custom translator fields round-trip without leaking the key', () => {
 });
 
 test('base URL is trimmed, validated and required for custom', () => {
-  assert.equal(
-    normalizeBaseUrl(' https://gateway.example.com/v1/ ', 'groq'),
-    'https://gateway.example.com/v1',
-  );
-  assert.equal(normalizeBaseUrl('', 'groq'), '');
-  assert.throws(() => normalizeBaseUrl('', 'custom'), /Base URL/);
-  assert.throws(() => normalizeBaseUrl('gateway.example.com/v1', 'custom'), /http/);
-  assert.throws(() => normalizeBaseUrl('ftp://gateway.example.com/v1', 'custom'), /http/);
-  assert.throws(() => normalizeBaseUrl('http://example.com/v1', 'custom'), /https/);
-  assert.throws(
-    () => normalizeBaseUrl('https://user:pass@gateway.example.com/v1', 'custom'),
-    /credentials/,
-  );
-  assert.throws(
-    () => normalizeBaseUrl('https://gateway.example.com/v1?key=1', 'custom'),
-    /query/,
-  );
-  assert.throws(
-    () => normalizeBaseUrl('https://gateway.example.com/v1#', 'custom'),
-    /query/,
-  );
-  assert.equal(
-    normalizeBaseUrl('http://localhost:11434/v1', 'custom'),
-    'http://localhost:11434/v1',
-  );
-  assert.equal(
-    normalizeBaseUrl('http://192.168.1.10:11434/v1', 'custom'),
-    'http://192.168.1.10:11434/v1',
-  );
-  assert.equal(
-    normalizeBaseUrl('http://172.31.5.4:1234/v1', 'custom'),
-    'http://172.31.5.4:1234/v1',
-  );
-  assert.throws(() => normalizeBaseUrl('http://172.32.5.4:1234/v1', 'custom'), /https/);
-  assert.throws(() => normalizeBaseUrl('http://192.168.1.10.evil.com/v1', 'custom'), /https/);
+  for (const entry of VALIDATION.baseUrl) {
+    const label = JSON.stringify(entry);
+    if (entry.error) {
+      assert.throws(
+        () => normalizeBaseUrl(entry.value, entry.preset),
+        ERROR_PATTERNS[entry.error],
+        label,
+      );
+    } else {
+      assert.equal(normalizeBaseUrl(entry.value, entry.preset), entry.expect, label);
+    }
+  }
 });
 
 test('model is optional except for custom', () => {
-  assert.equal(normalizeModel('  my-model  ', 'groq'), 'my-model');
-  assert.equal(normalizeModel('', 'groq'), '');
-  assert.throws(() => normalizeModel('', 'custom'), /Model/);
+  for (const entry of VALIDATION.model) {
+    const label = JSON.stringify(entry);
+    if (entry.error) {
+      assert.throws(
+        () => normalizeModel(entry.value, entry.preset),
+        ERROR_PATTERNS[entry.error],
+        label,
+      );
+    } else {
+      assert.equal(normalizeModel(entry.value, entry.preset), entry.expect, label);
+    }
+  }
 });
 
 test('extra request fields must be a JSON object', () => {
-  assert.equal(normalizeExtraBody(''), '');
-  assert.equal(normalizeExtraBody(' {"top_k":20} '), '{"top_k":20}');
-  assert.throws(() => normalizeExtraBody('{not json'), /JSON/);
-  for (const value of ['[]', 'null', '"x"', '42']) {
-    assert.throws(() => normalizeExtraBody(value), /object/);
+  for (const entry of VALIDATION.extraBody) {
+    const label = JSON.stringify(entry);
+    if (entry.error) {
+      assert.throws(() => normalizeExtraBody(entry.value), ERROR_PATTERNS[entry.error], label);
+    } else {
+      assert.equal(normalizeExtraBody(entry.value), entry.expect, label);
+    }
   }
 });
 
 test('only LAN targets require Android local-network access', () => {
-  const device = { ...DEFAULT_SETTINGS, translatorBaseUrl: 'https://api.groq.com/openai/v1' };
-  assert.equal(needsLocalNetworkPermission(device), false);
-  assert.equal(
-    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'http://192.168.1.10:11434/v1' }),
-    true,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'https://[fd00::1]/v1' }),
-    true,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'https://parley.local/v1' }),
-    true,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'https://parley.home.arpa/v1' }),
-    true,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'http://localhost:11434/v1' }),
-    false,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({ ...device, translatorBaseUrl: 'http://127.0.0.1:11434/v1' }),
-    false,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({
-      ...device,
-      ttsProvider: 'kokoro',
-      kokoroUrl: 'http://192.168.1.10:8880',
-    }),
-    true,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({
-      ...device,
-      ttsProvider: 'system',
-      kokoroUrl: 'http://192.168.1.10:8880',
-    }),
-    false,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({ ...device, mode: 'server', serverUrl: 'ws://10.0.0.5:8787' }),
-    true,
-  );
-  assert.equal(
-    needsLocalNetworkPermission({
-      ...device,
-      mode: 'server',
-      serverUrl: 'wss://parley.example.com',
-    }),
-    false,
-  );
+  const { base, cases } = VALIDATION.localNetwork;
+  for (const entry of cases) {
+    assert.equal(
+      needsLocalNetworkPermission({ ...base, ...entry.set }),
+      entry.expect,
+      JSON.stringify(entry),
+    );
+  }
 });

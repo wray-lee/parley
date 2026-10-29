@@ -13,11 +13,12 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { PRESETS } from '../config/presets.js';
+import presetData from '../config/presets.json' with { type: 'json' };
 import { create } from '../core/providers/translator-openai.js';
 import { buildTranslatorRequest } from '../core/translator-request.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const { PRESETS } = presetData;
 const PRESET = process.env.LLM_PRESET || 'groq';
 const API_KEY = process.env.LLM_API_KEY || '';
 

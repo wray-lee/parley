@@ -11,8 +11,10 @@ import { WebSocketServer } from 'ws';
 import { createRegistry } from '../../core/packs-registry.js';
 import { loadProvider } from '../../core/providers/index.js';
 import { createSession } from '../../core/session.js';
-import { PRESETS } from '../../config/presets.js';
+import presetData from '../../config/presets.json' with { type: 'json' };
 import { loadConfig } from './config.js';
+
+const { PRESETS } = presetData;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 

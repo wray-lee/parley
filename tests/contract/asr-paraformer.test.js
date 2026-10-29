@@ -7,7 +7,7 @@ import { create } from '../../core/providers/asr-paraformer.js';
 
 // Replays the DashScope Paraformer wire protocol into the adapter; no network
 // is touched. Fixtures marked "recorded" in each file say where they came from.
-const FIXTURES = path.join(import.meta.dirname, 'fixtures', 'paraformer');
+const FIXTURES = path.join(import.meta.dirname, '..', '..', 'spec', 'fixtures', 'paraformer');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class FakeSocket {

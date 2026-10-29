@@ -7,7 +7,7 @@ import { create } from '../../core/providers/asr-deepgram.js';
 
 // Replays the Deepgram wire protocol into the adapter; no network is touched.
 // live-*.json are real captures with the key stripped (see each `recorded`).
-const FIXTURES = path.join(import.meta.dirname, 'fixtures', 'deepgram');
+const FIXTURES = path.join(import.meta.dirname, '..', '..', 'spec', 'fixtures', 'deepgram');
 
 class FakeSocket {
   static instances = [];

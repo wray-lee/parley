@@ -6,7 +6,7 @@ import path from 'node:path';
 import { create } from '../../core/providers/asr-whisperlivekit.js';
 
 // Replays WhisperLiveKit full-mode JSON into the adapter; no network is touched.
-const FIXTURES = path.join(import.meta.dirname, 'fixtures', 'whisperlivekit');
+const FIXTURES = path.join(import.meta.dirname, '..', '..', 'spec', 'fixtures', 'whisperlivekit');
 
 class FakeSocket {
   static instances = [];

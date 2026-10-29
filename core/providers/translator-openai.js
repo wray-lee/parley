@@ -1,11 +1,13 @@
 // OpenAI-compatible chat-completions translator. One adapter serves every
-// Preset; config/presets.js holds the endpoints and recommended models.
+// Preset; config/presets.json holds the endpoints and recommended models.
 // Options come from the Server Host env: preset, baseUrl, apiKey, model,
 // extraBody. Errors carry a kind (unreachable|auth|rate_limit|timeout|protocol)
 // and a suggested fallback so the host can surface them instead of failing
 // silently.
 
-import { DEFAULT_PRESET, PRESETS } from '../../config/presets.js';
+import presetData from '../../config/presets.json' with { type: 'json' };
+
+const { DEFAULT_PRESET, PRESETS } = presetData;
 
 // shortcut: one whole-stream 30 s timeout, add a first-token timeout if slow local models need it.
 const DEFAULT_TIMEOUT_MS = 30_000;
