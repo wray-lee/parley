@@ -1031,3 +1031,145 @@ test('Listen live Session Trace records the v0.0.3 Gating divergence', async () 
   );
   checkTrace(trace);
 });
+
+test('Listen Hold-merge Session Trace is the frozen oracle', async () => {
+  const asr = scriptedAsr([
+    { at: 20, events: [{ type: 'stable', text: 'part one' }] },
+    { at: 420, events: [{ type: 'stable', text: 'part two' }] },
+    { at: 820, events: [{ type: 'stable', text: 'part three' }] },
+  ]);
+  const translator = scriptedTranslator(['⏸', '⏸', 'merged-translation']);
+  const { session, clock, events, records, trace } = build({ asr, translator, trace: 'listen-hold-merge' });
+  start(session);
+
+  await speechThenSilence(session, clock, 18);
+  await speechThenSilence(session, clock, 18);
+  await speechThenSilence(session, clock, 18);
+
+  const segments = events.filter((event) => event.type === 'segment');
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].src, 'part one part two part three');
+  assert.deepEqual(
+    events.filter((event) => event.type === 'hold').map((event) => event.merges),
+    [0, 1],
+  );
+  assert.equal(translator.requests.length, 3);
+  assert.equal(translator.requests[1].text, 'part one part two');
+  assert.equal(translator.requests[2].text, 'part one part two part three');
+  assert.equal(records.length, 1);
+  assert.equal(records[0].held, true);
+  assert.equal(records[0].merges, 2);
+  assert.equal(records[0].forced, false);
+  checkTrace(trace);
+});
+
+test('Listen forced-translation Session Trace is the frozen oracle', async () => {
+  const translator = scriptedTranslator(['⏸', 'forced-translation']);
+  const { session, clock, events, records, trace } = build({ translator, trace: 'listen-hold-force' });
+  start(session);
+
+  await speechThenSilence(session, clock, 18);
+  clock.advance(2500);
+  await session.idle();
+
+  const segments = events.filter((event) => event.type === 'segment');
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].tgt, 'forced-translation');
+  assert.equal(translator.requests.length, 2);
+  assert.ok(translator.requests[1].system.endsWith(FORCED_INSTRUCTION));
+  assert.equal(records.length, 1);
+  assert.equal(records[0].forced, true);
+  assert.equal(records[0].merges, 0);
+  checkTrace(trace);
+});
+
+test('Listen forced-failure Session Trace is the frozen oracle', async () => {
+  const translator = scriptedTranslator(['⏸', '⏸']);
+  const { session, clock, events, records, tts, trace } = build({
+    translator,
+    trace: 'listen-hold-force-fail',
+  });
+  start(session);
+
+  await speechThenSilence(session, clock, 18);
+  clock.advance(2500);
+  await session.idle();
+
+  const segments = events.filter((event) => event.type === 'segment');
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].tgt, '');
+  assert.equal(segments[0].speak, false);
+  assert.equal(tts.calls.length, 0);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].forced_fail, true);
+  checkTrace(trace);
+});
+
+test('Listen Rolling Context Session Trace is the frozen oracle', async () => {
+  const marks = Array.from({ length: 10 }, (_, index) => ({
+    at: 20 + 400 * index,
+    events: [{ type: 'stable', text: `s${index}` }],
+  }));
+  const translator = scriptedTranslator(Array.from({ length: 10 }, (_, index) => `t${index}`));
+  const { session, clock, events, trace } = build({
+    asr: scriptedAsr(marks),
+    translator,
+    trace: 'listen-rolling-context',
+  });
+  start(session);
+
+  for (let index = 0; index < 10; index++) await speechThenSilence(session, clock, 18);
+
+  assert.equal(events.filter((event) => event.type === 'segment').length, 10);
+  assert.equal(translator.requests.length, 10);
+  assert.equal(
+    translator.requests[1].user,
+    '[已译上下文]\n原文：s0\n译文：t0\n[新段落]\ns1',
+  );
+  assert.equal(
+    translator.requests[2].user,
+    '[已译上下文]\n原文：s0\n译文：t0\n原文：s1\n译文：t1\n[新段落]\ns2',
+  );
+  const last = translator.requests[9].user;
+  assert.equal(last.match(/原文：/g).length, 8, 'Rolling Context keeps exactly 8 pairs');
+  assert.match(last, /原文：s1\n译文：t1\n/);
+  assert.doesNotMatch(last, /原文：s0\n/);
+  checkTrace(trace);
+});
+
+test('Listen Cut-modes Session Trace is the frozen oracle', async () => {
+  const asr = scriptedAsr([
+    { at: 20, events: [{ type: 'stable', text: 'a' }] },
+    { at: 400, events: [{ type: 'stable', text: 'ab' }] },
+    { at: 2920, events: [{ type: 'stable', text: 'abc' }] },
+    { at: 2940, events: [{ type: 'stable', text: 'abcd' }] },
+  ]);
+  const translator = scriptedTranslator(['t-a', 't-ab', 't-abc', 't-abcd']);
+  const { session, clock, events, trace } = build({
+    asr,
+    translator,
+    pairConfig: { 'zh->ja': { clauseLength: 3, unit: 'char' } },
+    trace: 'listen-cuts',
+  });
+  start(session);
+
+  // Silence Cut.
+  await speechThenSilence(session, clock, 18);
+  // Accumulated-duration Cut at 2.5 s of confirmed speech.
+  feedSpeech(session, clock, 2500);
+  await session.idle();
+  // Clause-length Cut on the Stable Prefix.
+  feedSpeech(session, clock, 40);
+  await session.idle();
+  // Push-to-talk release Cut.
+  session.handleMessage({ type: 'ptt', state: 'down' });
+  feedSpeech(session, clock, 200);
+  session.handleMessage({ type: 'ptt', state: 'up' });
+  await session.idle();
+
+  assert.deepEqual(
+    events.filter((event) => event.type === 'segment').map((event) => event.src),
+    ['a', 'ab', 'abc', 'abcd'],
+  );
+  checkTrace(trace);
+});

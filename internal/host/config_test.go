@@ -20,7 +20,14 @@ func TestLoadConfigDefaultsToDemoMode(t *testing.T) {
 	}
 }
 
-func TestLoadConfigReadsTheContract(t *testing.T) {
+func TestLoadConfigPassesLLMExtraBodyUntouched(t *testing.T) {
+	config := host.LoadConfig(env(map[string]string{"LLM_API_KEY": "k", "LLM_EXTRA_BODY": `{"top_k":20}`}))
+	if config.LLM.ExtraBody != `{"top_k":20}` {
+		t.Fatalf("extra body = %q", config.LLM.ExtraBody)
+	}
+}
+
+func TestLoadConfigEnvironmentSelectsProvidersAndPort(t *testing.T) {
 	config := host.LoadConfig(env(map[string]string{
 		"PORT": "4242", "ACCESS_TOKEN": "secret", "PUBLIC_DOMAIN": "parley.example.com",
 		"ASR_PROVIDER": "deepgram", "TTS_PROVIDER": "azure",

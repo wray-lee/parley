@@ -61,6 +61,7 @@ func NewMockASR(sample Sample) *MockASR {
 
 func (m *MockASR) Name() string      { return "mock" }
 func (m *MockASR) AcceptsLive() bool { return false }
+func (m *MockASR) Revisable() bool   { return false }
 func (m *MockASR) Close()            {}
 
 // Open resets the transcript playback for a new Session or sample replay.

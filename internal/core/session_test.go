@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 
@@ -77,6 +78,7 @@ type asrMark struct {
 type scriptedASR struct {
 	name        string
 	acceptsLive bool
+	revisable   bool
 	marks       []asrMark
 	fired       []bool
 	opened      int
@@ -84,6 +86,7 @@ type scriptedASR struct {
 
 func (a *scriptedASR) Name() string      { return a.name }
 func (a *scriptedASR) AcceptsLive() bool { return a.acceptsLive }
+func (a *scriptedASR) Revisable() bool   { return a.revisable }
 func (a *scriptedASR) Open(protocol.Direction) {
 	a.opened++
 	a.fired = make([]bool, len(a.marks))
@@ -137,6 +140,16 @@ func partial(text string) core.ASREvent {
 	return core.ASREvent{Type: "partial", Text: text}
 }
 
+func segmentsOf(events []protocol.Event) []*protocol.SegmentEvent {
+	var segments []*protocol.SegmentEvent
+	for _, event := range events {
+		if segment, ok := event.(*protocol.SegmentEvent); ok {
+			segments = append(segments, segment)
+		}
+	}
+	return segments
+}
+
 type harness struct {
 	session *core.Session
 	clock   *fakeClock
@@ -146,9 +159,19 @@ type harness struct {
 
 func newHarness(t *testing.T, asr core.ASR, translator core.Translator, tts core.TTS) *harness {
 	t.Helper()
+	return newHarnessWithConfig(t, asr, translator, tts,
+		map[string]core.PairConfig{"zh->ja": {ClauseLength: 12, Unit: "char"}})
+}
+
+func newHarnessWithConfig(t *testing.T, asr core.ASR, translator core.Translator, tts core.TTS, pairConfig map[string]core.PairConfig) *harness {
+	t.Helper()
 	registry, err := core.LoadRegistry(parley.Assets, func(string) {})
 	if err != nil {
 		t.Fatalf("registry: %v", err)
+	}
+	forced, err := fs.ReadFile(parley.Assets, "prompts/forced_translation.txt")
+	if err != nil {
+		t.Fatalf("forced instruction: %v", err)
 	}
 	if asr == nil {
 		asr = &scriptedASR{name: "scripted"}
@@ -161,12 +184,13 @@ func newHarness(t *testing.T, asr core.ASR, translator core.Translator, tts core
 	}
 	h := &harness{clock: newFakeClock(1000)}
 	h.session = core.NewSession(core.SessionConfig{
-		Providers:  core.Providers{ASR: asr, Translator: translator, TTS: tts},
-		Clock:      h.clock,
-		Registry:   registry,
-		PairConfig: map[string]core.PairConfig{"zh->ja": {ClauseLength: 12, Unit: "char"}},
-		Emit:       func(event protocol.Event) { h.events = append(h.events, event) },
-		Log:        func(record protocol.SegmentLog) { h.logs = append(h.logs, record) },
+		Providers:         core.Providers{ASR: asr, Translator: translator, TTS: tts},
+		Clock:             h.clock,
+		Registry:          registry,
+		PairConfig:        pairConfig,
+		ForcedInstruction: strings.TrimSpace(string(forced)),
+		Emit:              func(event protocol.Event) { h.events = append(h.events, event) },
+		Log:               func(record protocol.SegmentLog) { h.logs = append(h.logs, record) },
 	})
 	return h
 }
@@ -301,6 +325,95 @@ func TestListenSilenceCutUsesSpeechEnd(t *testing.T) {
 	}
 }
 
+func TestSilenceCutWaitsForTheLateFinal(t *testing.T) {
+	asr := &scriptedASR{name: "scripted", marks: []asrMark{
+		{at: 20, events: []core.ASREvent{partial("127.5")}},
+		{at: 440, events: []core.ASREvent{stable("127.5")}},
+	}}
+	h := newHarness(t, asr, nil, nil)
+	startListen(h)
+
+	h.feed(20)
+	h.silence(360)
+	h.session.Idle()
+	if got := len(segmentsOf(h.events)); got != 0 {
+		t.Fatalf("cut before the late final: %d segments", got)
+	}
+
+	h.silence(60)
+	h.session.Idle()
+	segments := segmentsOf(h.events)
+	if len(segments) != 1 || segments[0].Src != "127.5" {
+		t.Fatalf("segments = %+v", segments)
+	}
+	if segments[0].LatencyMS >= 950 {
+		t.Fatalf("cut at the deadline, not on the final: latency=%d", segments[0].LatencyMS)
+	}
+}
+
+func TestSilenceCutCatchupExpiresWithStableTextOnly(t *testing.T) {
+	asr := &scriptedASR{name: "scripted", marks: []asrMark{
+		{at: 20, events: []core.ASREvent{partial("hello world")}},
+		{at: 40, events: []core.ASREvent{stable("hello")}},
+	}}
+	h := newHarness(t, asr, nil, nil)
+	startListen(h)
+
+	h.feed(40)
+	h.silence(360)
+	h.session.Idle()
+	if got := len(segmentsOf(h.events)); got != 0 {
+		t.Fatalf("cut before the wait: %d segments", got)
+	}
+	h.silence(560)
+	h.session.Idle()
+	if got := len(segmentsOf(h.events)); got != 0 {
+		t.Fatalf("cut before 600 ms: %d segments", got)
+	}
+	h.silence(20)
+	h.session.Idle()
+	segments := segmentsOf(h.events)
+	if len(segments) != 1 || segments[0].Src != "hello" {
+		t.Fatalf("segments = %+v", segments)
+	}
+}
+
+func TestRevisableAgreementMakesThePrefixStable(t *testing.T) {
+	asr := &scriptedASR{name: "scripted", revisable: true, marks: []asrMark{
+		{at: 20, events: []core.ASREvent{partial("hello")}},
+		{at: 40, events: []core.ASREvent{partial("hello")}},
+	}}
+	h := newHarness(t, asr, nil, nil)
+	startListen(h)
+
+	h.feed(200)
+	h.session.Idle()
+	if got := len(segmentsOf(h.events)); got != 0 {
+		t.Fatalf("agreed Partials cut before a Cut: %d segments", got)
+	}
+	h.session.HandleMessage(protocol.ClientMessage{Type: "ptt", State: "up"})
+	h.session.Idle()
+	segments := segmentsOf(h.events)
+	if len(segments) != 1 || segments[0].Src != "hello" {
+		t.Fatalf("segments = %+v", segments)
+	}
+}
+
+func TestSingleRevisableHypothesisNeverBecomesStable(t *testing.T) {
+	asr := &scriptedASR{name: "scripted", revisable: true, marks: []asrMark{
+		{at: 20, events: []core.ASREvent{partial("hello")}},
+	}}
+	h := newHarness(t, asr, nil, nil)
+	startListen(h)
+
+	h.feed(200)
+	h.session.HandleMessage(protocol.ClientMessage{Type: "ptt", State: "up"})
+	h.session.Idle()
+	if got := len(segmentsOf(h.events)); got != 0 {
+		t.Fatalf("single hypothesis became stable: %d segments", got)
+	}
+}
+
 func TestRollingContextCarriesTheLastCommittedPair(t *testing.T) {
 	asr := &scriptedASR{name: "scripted", marks: []asrMark{
 		{at: 20, events: []core.ASREvent{partial("one"), stable("one")}},
@@ -368,14 +481,42 @@ func TestMockAsrRefusesLiveAudioOnce(t *testing.T) {
 	}
 }
 
-func TestConverseStartFailsExplicitly(t *testing.T) {
-	h := newHarness(t, nil, nil, nil)
+func TestConverseTurnsRouteAudioAndSpeakOnlyMe(t *testing.T) {
+	asr := &scriptedASR{
+		name: "scripted", acceptsLive: true,
+		marks: []asrMark{{at: 20, events: []core.ASREvent{stable("from me")}}},
+	}
+	translator := &scriptedTranslator{name: "scripted", answers: [][]string{{"translated-me"}, {"translated-them"}}}
+	tts := &scriptedTTS{name: "scripted"}
+	h := newHarness(t, asr, translator, tts)
 	h.session.HandleMessage(protocol.ClientMessage{Type: "start", Mode: "converse", Src: "zh", Tgt: "ja"})
-	if len(h.events) != 1 {
+
+	if len(h.events) != 2 {
 		t.Fatalf("events = %+v", h.events)
 	}
-	errEvent := h.events[0].(*protocol.ErrorEvent)
-	if errEvent.Kind != "protocol" || !strings.Contains(errEvent.Message, "converse") || errEvent.Fallback == "" {
-		t.Fatalf("error = %+v", errEvent)
+	if turn, ok := h.events[1].(*protocol.TurnEvent); !ok || turn.Who != "me" {
+		t.Fatalf("turn = %+v", h.events[1])
+	}
+	h.feed(20)
+	h.silence(360)
+	h.session.Idle()
+
+	h.session.HandleMessage(protocol.ClientMessage{Type: "turn", Who: "them"})
+	h.feed(20)
+	h.silence(360)
+	h.session.Idle()
+
+	segments := segmentsOf(h.events)
+	if len(segments) != 2 {
+		t.Fatalf("segments = %+v", h.events)
+	}
+	if !segments[0].Speak || segments[0].Direction.Src != "zh" {
+		t.Fatalf("me segment = %+v", segments[0])
+	}
+	if segments[1].Speak || segments[1].Direction.Src != "ja" {
+		t.Fatalf("them segment = %+v", segments[1])
+	}
+	if len(tts.request) != 1 || tts.request[0].Text != "translated-me" {
+		t.Fatalf("tts = %+v", tts.request)
 	}
 }

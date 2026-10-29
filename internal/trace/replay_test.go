@@ -2,6 +2,7 @@ package trace_test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -10,16 +11,19 @@ import (
 
 const listenTrace = "../../spec/traces/listen-basic.jsonl"
 
-var listenTraces = []string{
-	"../../spec/traces/listen-basic.jsonl",
-	"../../spec/traces/listen-live-gating.jsonl",
-}
-
-func TestListenTracesReplayDeterministically(t *testing.T) {
-	for _, name := range listenTraces {
+func TestEverySessionTraceReplaysDeterministically(t *testing.T) {
+	files, err := filepath.Glob("../../spec/traces/*.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) < 8 {
+		t.Fatalf("expected at least 8 recorded traces, found %d", len(files))
+	}
+	for _, name := range files {
+		t.Logf("replay %s", filepath.Base(name))
 		for run := 0; run < 2; run++ {
 			if err := trace.ReplayFile(name); err != nil {
-				t.Fatalf("%s run %d: %v", name, run, err)
+				t.Fatalf("%s run %d: %v", filepath.Base(name), run, err)
 			}
 		}
 	}

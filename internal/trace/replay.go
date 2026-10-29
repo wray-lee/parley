@@ -111,7 +111,7 @@ func Replay(text string) error {
 
 	session := core.NewSession(core.SessionConfig{
 		Providers: core.Providers{
-			ASR:        &traceASR{name: meta.Providers.ASR.Name, acceptsLive: meta.Providers.ASR.AcceptsLive, responses: asrResponses},
+			ASR:        &traceASR{name: meta.Providers.ASR.Name, acceptsLive: meta.Providers.ASR.AcceptsLive, revisable: meta.Providers.ASR.Revisable, responses: asrResponses},
 			Translator: &traceTranslator{name: meta.Providers.Translator.Name, calls: translatorCalls, push: push},
 			TTS:        &traceTTS{name: meta.Providers.TTS.Name, responses: ttsResponses, push: push},
 		},
@@ -230,12 +230,14 @@ func pcmFrame(ms int64, amplitude float64) []int16 {
 type traceASR struct {
 	name        string
 	acceptsLive bool
+	revisable   bool
 	responses   [][]core.ASREvent
 	index       int
 }
 
 func (a *traceASR) Name() string            { return a.name }
 func (a *traceASR) AcceptsLive() bool       { return a.acceptsLive }
+func (a *traceASR) Revisable() bool         { return a.revisable }
 func (a *traceASR) Open(protocol.Direction) {}
 func (a *traceASR) Close()                  {}
 func (a *traceASR) Push([]int16, int64) ([]core.ASREvent, error) {

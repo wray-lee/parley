@@ -6,6 +6,7 @@ package core
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -37,6 +38,9 @@ type ASREvent struct {
 type ASR interface {
 	Name() string
 	AcceptsLive() bool
+	// Revisable reports that the Provider emits only revisable hypotheses, so
+	// the Session derives the Stable Prefix by agreement.
+	Revisable() bool
 	Open(direction protocol.Direction)
 	Push(pcm []int16, audioMS int64) ([]ASREvent, error)
 	Close()
@@ -96,12 +100,17 @@ type Session struct {
 	running          bool
 	mode             string
 	start            protocol.Direction
+	directions       map[string]*Direction
+	turn             string
 	direction        *Direction
+	revisable        bool
 	packs            []string
 	input            string
 	audioMS          int64
 	stable           string
 	partial          string
+	lastHypothesis   string
+	committedPrefix  string
 	lastSpeechAt     *int64
 	ptt              bool
 	segID            int
@@ -112,6 +121,8 @@ type Session struct {
 	cutWait       Timer
 	drain         Timer
 	drainDeadline int64
+	hold          *HoldPolicy
+	holdTimer     Timer
 }
 
 // NewSession builds a Session.
@@ -129,7 +140,9 @@ func NewSession(cfg SessionConfig) *Session {
 		tts:        cfg.Providers.TTS,
 		registry:   cfg.Registry,
 		pairConfig: cfg.PairConfig,
+		revisable:  cfg.Providers.ASR.Revisable(),
 		contexts:   make(map[string][]ContextPair),
+		hold:       NewHoldPolicy(cfg.ForcedInstruction),
 	}
 }
 
@@ -216,7 +229,7 @@ func (s *Session) HandleMessage(message protocol.ClientMessage) {
 			s.input = "live"
 		}
 	case "turn":
-		// Converse Turns arrive with the session parity ticket.
+		s.setTurn(message.Who)
 	case "playback":
 		// Playback gating arrives with the Gating parity ticket.
 	case "ptt":
@@ -228,6 +241,8 @@ func (s *Session) HandleMessage(message protocol.ClientMessage) {
 		}
 	case "stop":
 		s.running = false
+		s.clearHoldTimer()
+		s.hold.Reset()
 		s.asr.Close()
 		s.drainAfterClose()
 	}
@@ -246,13 +261,18 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 	if mode == "" {
 		mode = "listen"
 	}
+	var directions map[string]*Direction
 	if mode == "converse" {
-		s.emit(&protocol.ErrorEvent{
-			Type: "error", Kind: "protocol",
-			Message:  "converse mode is not implemented in this build",
-			Fallback: "Start in Listen mode; Converse support arrives in a later build.",
-		})
-		return
+		reverse := s.registry.FindDirection(direction.Tgt, direction.Src)
+		if reverse == nil {
+			s.emit(&protocol.ErrorEvent{
+				Type: "error", Kind: "protocol",
+				Message: "converse needs both directions: " + direction.Src + "->" + direction.Tgt +
+					" and " + direction.Tgt + "->" + direction.Src,
+			})
+			return
+		}
+		directions = map[string]*Direction{"me": direction, "them": reverse}
 	}
 
 	packs := []string{}
@@ -268,6 +288,11 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 	s.running = true
 	s.mode = mode
 	s.start = protocol.Direction{Src: direction.Src, Tgt: direction.Tgt}
+	s.directions = directions
+	s.turn = ""
+	if mode == "converse" {
+		s.turn = "me"
+	}
 	s.packs = packs
 	s.direction = direction
 	s.input = "live"
@@ -279,9 +304,36 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 	s.segID = 0
 	s.mockMicErrorSent = false
 	s.contexts = make(map[string][]ContextPair)
+	s.clearHoldTimer()
+	s.hold.Reset()
 	s.cut = NewCutPolicy(s.pairConfig[direction.Src+"->"+direction.Tgt])
 	s.asr.Open(directionRef(direction))
 	s.emit(&protocol.StateEvent{Type: "state", State: "listening"})
+	if mode == "converse" {
+		s.emit(&protocol.TurnEvent{Type: "turn", Who: "me"})
+	}
+}
+
+// setTurn switches the audio Direction in Converse. A Held Segment never
+// merges into another Turn's Direction, so it is forced now.
+func (s *Session) setTurn(who string) {
+	if !s.converse() || s.directions[who] == nil || s.turn == who {
+		return
+	}
+	s.closeSegment(s.cfg.Clock.Now(), true)
+	s.turn = who
+	s.direction = s.directions[who]
+	s.audioMS = 0
+	s.resetAgreement()
+	s.cut = NewCutPolicy(s.pairConfig[s.direction.Src+"->"+s.direction.Tgt])
+	if s.hold.Held() != nil {
+		s.enqueue(func() error {
+			s.forceHeld()
+			return nil
+		})
+	}
+	s.asr.Open(directionRef(s.direction))
+	s.emit(&protocol.TurnEvent{Type: "turn", Who: who})
 }
 
 // HandleAudio feeds one PCM16 microphone frame.
@@ -350,9 +402,7 @@ func (s *Session) handleASREvents(events []ASREvent) {
 	for _, event := range events {
 		switch event.Type {
 		case "partial":
-			s.partial = event.Text
-			// A Partial is display-only: never translated and never committed.
-			s.emit(&protocol.ASAPartialEvent{Type: "asr_partial", Text: event.Text, Direction: directionRef(s.direction)})
+			s.handlePartial(event.Text)
 		case "stable":
 			glue := " "
 			if event.Glue != nil {
@@ -361,6 +411,34 @@ func (s *Session) handleASREvents(events []ASREvent) {
 			s.addStable(event.Text, glue)
 		}
 	}
+}
+
+// handlePartial stores a display-only hypothesis. A revisable ASR only emits
+// hypotheses, so the Stable Prefix is the agreed common prefix not yet added.
+func (s *Session) handlePartial(text string) {
+	s.partial = text
+	if s.revisable {
+		common := commonPrefix(s.lastHypothesis, text)
+		stable := ""
+		if runes := []rune(common); len(runes) > len([]rune(s.committedPrefix)) {
+			stable = string(runes[len([]rune(s.committedPrefix)):])
+		}
+		s.lastHypothesis = text
+		if stable != "" {
+			s.committedPrefix = common
+			s.addStable(stable, "") // successive prefixes of one hypothesis
+		}
+	}
+	s.emit(&protocol.ASAPartialEvent{Type: "asr_partial", Text: text, Direction: directionRef(s.direction)})
+}
+
+func commonPrefix(a, b string) string {
+	left, right := []rune(a), []rune(b)
+	index := 0
+	for index < len(left) && index < len(right) && left[index] == right[index] {
+		index++
+	}
+	return string(left[:index])
 }
 
 func (s *Session) addStable(text, glue string) {
@@ -398,7 +476,11 @@ func (s *Session) asrPending() bool {
 	return partial != "" && !strings.HasSuffix(strip(s.stable), partial)
 }
 
-func (s *Session) resetAgreement() { s.partial = "" }
+func (s *Session) resetAgreement() {
+	s.partial = ""
+	s.lastHypothesis = ""
+	s.committedPrefix = ""
+}
 
 func (s *Session) closeSegment(now int64, utteranceEnd bool) {
 	s.cancelCutWait()
@@ -428,16 +510,45 @@ func (s *Session) closeSegment(now int64, utteranceEnd bool) {
 }
 
 func (s *Session) commit(source string, speechEnd int64, direction *Direction, finalizedAt int64) {
+	if held := s.hold.Held(); held != nil && sameDirection(directionRef(held.direction), directionRef(direction)) {
+		// A Held Segment is merged with this Cut and retried.
+		s.translate(s.hold.Merge(source, speechEnd, finalizedAt), false)
+		return
+	}
+	if s.hold.Held() != nil {
+		// A Segment of another Direction never merges into the Held one.
+		s.translate(s.hold.Force(), true)
+	}
+	s.translate(&pendingSegment{
+		source: source, speechEnd: speechEnd, direction: direction, finalizedAt: finalizedAt,
+	}, false)
+}
+
+func (s *Session) forceHeld() {
+	if s.hold.Held() == nil || s.hold.Held().forced {
+		return
+	}
+	s.translate(s.hold.Force(), true)
+}
+
+func (s *Session) translate(pending *pendingSegment, forced bool) {
+	if pending == nil {
+		return
+	}
+	direction := pending.direction
 	ref := directionRef(direction)
 	key := ref.Src + "\x00" + ref.Tgt
 	context := s.contexts[key]
 	glossary := SelectGlossary(s.registry, ref.Src, ref.Tgt, s.packs)
-	prompt := BuildTranslatorRequest(direction.Prompt, context, source, glossary)
+	request := BuildTranslatorRequest(direction.Prompt, context, pending.source, glossary)
+	if forced {
+		request = s.hold.WithInstruction(request)
+	}
 
 	var translated strings.Builder
 	var firstToken *int64
 	err := s.translator.Translate(protocol.TranslatorRequest{
-		System: prompt.System, User: prompt.User, Text: source, Direction: ref,
+		System: request.System, User: request.User, Text: pending.source, Direction: ref,
 	}, func(chunk string) {
 		if firstToken == nil {
 			at := s.cfg.Clock.Now()
@@ -449,21 +560,88 @@ func (s *Session) commit(source string, speechEnd int64, direction *Direction, f
 		s.emitError("translator", err)
 		return
 	}
-	text := strings.TrimSpace(translated.String())
 
+	// A reasoning model can leak its scratchpad into the content stream before
+	// the answer. Drop everything through the last closing "think" tag before
+	// Hold, Commit, TTS or Rolling Context see it.
+	text := translated.String()
+	leak := thinkLeakPattern.FindString(text)
+	if leak != "" {
+		text = text[len(leak):]
+	}
+	// Models may pad the answer; trim once here so Hold, Commit, TTS and
+	// Rolling Context all see the same text.
+	text = strings.TrimSpace(text)
+	if leak != "" && text == "" {
+		s.emit(&protocol.ErrorEvent{
+			Type: "error", Provider: "translator", Kind: "protocol",
+			Message:  "translator returned no text after leaked reasoning (" + s.translator.Name() + ")",
+			Fallback: "Switch LLM_PRESET, or check the endpoint and model with LLM_BASE_URL / LLM_MODEL.",
+		})
+		return
+	}
+	if s.hold.Inspect(text) {
+		s.handleHold(pending, forced, firstToken, direction)
+		return
+	}
+	s.commitTranslation(pending, text, firstToken, direction, key, context)
+}
+
+func (s *Session) handleHold(pending *pendingSegment, forced bool, firstToken *int64, direction *Direction) {
+	if forced || pending.forced {
+		// A Forced Translation that still returns ⏸ commits the source only.
+		s.commitSourceOnly(pending, firstToken, direction)
+		return
+	}
+	if s.hold.Held() == nil {
+		s.hold.MarkHeld(pending.source, pending.speechEnd, s.cfg.Clock.Now(), direction, pending.finalizedAt)
+		s.armHoldTimer()
+	}
+	held := s.hold.Held()
+	s.emit(&protocol.HoldEvent{
+		Type: "hold", Held: true, Merges: held.merges, Direction: directionRef(direction),
+	})
+	if s.hold.Expired(s.cfg.Clock.Now()) {
+		// The retry returned ⏸ after the limit: force it now.
+		s.clearHoldTimer()
+		s.translate(s.hold.Force(), true)
+	}
+}
+
+func (s *Session) commitSourceOnly(pending *pendingSegment, firstToken *int64, direction *Direction) {
+	ref := directionRef(direction)
+	s.segID++
+	segID := s.segID
+	s.emit(&protocol.SegmentEvent{
+		Type: "segment", SegID: segID, Src: pending.source, Tgt: "", Direction: ref,
+		LatencyMS: s.cfg.Clock.Now() - pending.speechEnd, Speak: false, Demo: s.demo(),
+	})
+	s.emitLog(protocol.SegmentLog{
+		SegID: segID, Direction: ref, SpeechEnd: pending.speechEnd, ASRFinal: pending.source,
+		ASRFinalAt: &pending.finalizedAt, FirstToken: firstToken,
+		Held: true, Merges: pending.merges, Forced: true, ForcedFail: true, EchoSuspect: 0,
+	})
+	s.clearHoldTimer()
+	s.hold.Reset()
+}
+
+func (s *Session) commitTranslation(pending *pendingSegment, text string, firstToken *int64, direction *Direction, key string, context []ContextPair) {
+	ref := directionRef(direction)
 	s.segID++
 	segID := s.segID
 	speak := !s.converse() || sameDirection(ref, s.start)
 	s.emit(&protocol.SegmentEvent{
-		Type: "segment", SegID: segID, Src: source, Tgt: text, Direction: ref,
-		LatencyMS: s.cfg.Clock.Now() - speechEnd, Speak: speak, Demo: s.demo(),
+		Type: "segment", SegID: segID, Src: pending.source, Tgt: text, Direction: ref,
+		LatencyMS: s.cfg.Clock.Now() - pending.speechEnd, Speak: speak, Demo: s.demo(),
 	})
 
-	next := append(context, ContextPair{Src: source, Tgt: text})
+	next := append(context, ContextPair{Src: pending.source, Tgt: text})
 	if len(next) > contextWindow {
 		next = next[len(next)-contextWindow:]
 	}
 	s.contexts[key] = next
+	s.clearHoldTimer()
+	s.hold.Reset()
 
 	var ttsFirstChunk *int64
 	if speak {
@@ -480,10 +658,34 @@ func (s *Session) commit(source string, speechEnd int64, direction *Direction, f
 	}
 
 	s.emitLog(protocol.SegmentLog{
-		SegID: segID, Direction: ref, SpeechEnd: speechEnd, ASRFinal: source,
-		ASRFinalAt: &finalizedAt, FirstToken: firstToken, TTSFirstChunk: ttsFirstChunk,
-		Held: false, Merges: 0, Forced: false, ForcedFail: false, EchoSuspect: 0,
+		SegID: segID, Direction: ref, SpeechEnd: pending.speechEnd, ASRFinal: pending.source,
+		ASRFinalAt: &pending.finalizedAt, FirstToken: firstToken, TTSFirstChunk: ttsFirstChunk,
+		Held: pending.held, Merges: pending.merges, Forced: pending.forced, ForcedFail: false, EchoSuspect: 0,
 	})
+}
+
+// thinkLeakPattern matches reasoning-model scratchpad up to its last closing
+// "think" tag.
+var thinkLeakPattern = regexp.MustCompile(`(?is)^.*</[^>]*think[^>]*>`)
+
+func (s *Session) armHoldTimer() {
+	if s.holdTimer != nil || s.hold.Held() == nil {
+		return
+	}
+	s.holdTimer = s.cfg.Clock.AfterFunc(s.hold.MSLeft(s.cfg.Clock.Now()), func() {
+		s.holdTimer = nil
+		s.enqueue(func() error {
+			s.forceHeld()
+			return nil
+		})
+	})
+}
+
+func (s *Session) clearHoldTimer() {
+	if s.holdTimer != nil {
+		s.holdTimer.Stop()
+		s.holdTimer = nil
+	}
 }
 
 func (s *Session) armCutWait() {
@@ -538,5 +740,7 @@ func (s *Session) Close() {
 	s.running = false
 	s.cancelDrain()
 	s.cancelCutWait()
+	s.clearHoldTimer()
+	s.hold.Reset()
 	s.asr.Close()
 }

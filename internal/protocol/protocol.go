@@ -42,6 +42,21 @@ type ErrorEvent struct {
 	Fallback string `json:"fallback,omitempty"`
 }
 
+// TurnEvent reports the Converse Turn that receives audio.
+type TurnEvent struct {
+	Type string `json:"type"`
+	Who  string `json:"who"`
+	Auto bool   `json:"auto"`
+}
+
+// HoldEvent reports that a Segment is Held for a later Cut to merge into.
+type HoldEvent struct {
+	Type      string    `json:"type"`
+	Held      bool      `json:"held"`
+	Merges    int       `json:"merges"`
+	Direction Direction `json:"direction"`
+}
+
 // ASAPartialEvent is a display-only ASR hypothesis.
 type ASAPartialEvent struct {
 	Type      string    `json:"type"`
@@ -82,6 +97,8 @@ type TTSEndEvent struct {
 }
 
 func (*StateEvent) isEvent()      {}
+func (*TurnEvent) isEvent()       {}
+func (*HoldEvent) isEvent()       {}
 func (*ErrorEvent) isEvent()      {}
 func (*ASAPartialEvent) isEvent() {}
 func (*SegmentEvent) isEvent()    {}

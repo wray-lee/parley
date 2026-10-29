@@ -87,3 +87,13 @@ Current traces:
   v0.0.3 gate that v0.1 removes (see `spec/DIVERGENCES.md`).
 - `converse-turns.jsonl` — Converse start, Turn `me` speech, Turn switch to
   `them`, subtitle-only Segment, Gating playback end plus tail.
+- `listen-cuts.jsonl` — one Listen Session exercising silence, accumulated
+  duration, clause length and PTT-release Cuts.
+- `listen-hold-merge.jsonl` — ⏸ holds a Segment; two later Cuts merge into it
+  and one Commit is logged with `merges: 2`.
+- `listen-hold-force.jsonl` — the 2.5 s Hold limit forces a translation whose
+  request carries the prompt-asset instruction.
+- `listen-hold-force-fail.jsonl` — the Forced Translation returns ⏸, so the
+  source commits alone with `speak: false` and no TTS.
+- `listen-rolling-context.jsonl` — ten Commits; the last request carries exactly
+  the eight most recent pairs.
