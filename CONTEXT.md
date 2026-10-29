@@ -16,7 +16,13 @@ _Avoid_: direction, locale
 How a Session uses a Language Pair — **Listen** (one Direction, user only listens) or **Converse** (both Directions, user speaks and listens).
 
 **Turn**:
-In Converse, who is currently speaking — **me** or **them**. Turns are chosen explicitly by the user and select the Direction that receives audio.
+In Converse, who is currently speaking — **me** or **them**. A Turn selects the Direction that receives audio. It is set by the me/them pads, or by Auto Turn when the ASR Provider supports it.
+
+**Auto Turn**:
+The Converse setting that switches the Turn by the language the ASR Provider tags in its own results, restricted to the two languages of the Language Pair. It is the default only when the selected ASR Provider declares pair-capable streaming language tags; otherwise the pads are Manual and the UI says so.
+
+**Turn Override**:
+A manual me/them tap that sets the Turn for the current Segment, cancels any pending Auto Turn decision and is logged; it always wins.
 
 **Gating**:
 Withholding microphone audio from ASR while the app's own speech is playing, plus a short tail. It applies in Converse only; Listen never gates.

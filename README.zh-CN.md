@@ -151,7 +151,7 @@ docker compose -f deploy/compose.yaml --env-file .env up -d --build
 | `moonshot` | 中国大陆可达 | 否 | Provider 条款声明提示词不会用于训练。 |
 | `cerebras` | 全球，美国托管 | 否 | Provider 条款声明推理数据不会用于训练。 |
 
-免费层的可用性、配额和模型 ID 经常变化；上表反映的是截至 **2026 年 10 月**（**2026-10** 快照）对 Preset 的理解。发送机密语音前，请核对各 Provider 的最新条款。Preset 是 [`config/presets.js`](config/presets.js) 中的数据；新增 Preset 不需要写代码（见 [CONTRIBUTING](CONTRIBUTING.md)）。
+免费层的可用性、配额和模型 ID 经常变化；上表反映的是截至 **2026 年 10 月**（**2026-10** 快照）对 Preset 的理解。发送机密语音前，请核对各 Provider 的最新条款。Preset 是 [`config/presets.json`](config/presets.json) 中的数据；新增 Preset 不需要写代码（见 [CONTRIBUTING](CONTRIBUTING.md)）。
 
 ### 额外请求字段
 
@@ -311,7 +311,7 @@ CI 会在每次 push 和 pull request 时运行相同的检查。测试接缝与
 - 本地 zh→ja 识别在随附的 WhisperLiveKit v0.2.26 `large-v3` 镜像和 compose 参数下可用；使用 `small` 模型或 WhisperLiveKit 自带的翻译参数则可能返回英文。永远不要启用 WhisperLiveKit 侧的翻译。
 - **尚未在真机上验证。** 手机安装与设备端检查仍待完成，未签名的 IPA 的 macOS 构建也尚未实际运行。
 - 由 `bun run build:apk` 生成的 APK 使用 debug 签名且仅支持 arm64；IPA 未签名。不发布到应用商店。
-- 语言自动识别、说话人分离、账号、支付和统计不在范围内。
+- 语言自动识别仅在 Language Pair 之内；说话人分离、账号、支付和统计不在范围内。v0.0.x 的 Converse 仅支持手动 Turn；v0.1 仅在 ASR Provider 报告支持 Language Pair 的语言标签时提供 Auto Turn（[ADR-0003](docs/adr/0003-flutter-clients-and-one-go-core.md)）。
 
 ## 文档
 

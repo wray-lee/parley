@@ -151,7 +151,7 @@ Let's Encrypt のためには、ポート 80 と 443 がインターネットか
 | `moonshot` | 中国（本土から到達可能） | いいえ | Provider の規約で、プロンプトは学習に使用されないと明記されています。 |
 | `cerebras` | グローバル、米国ホスト | いいえ | Provider の規約で、推論データは学習に使用されないと明記されています。 |
 
-無料枠の提供状況、クォータ、モデル ID は頻繁に変わります。この表は **2026 年 10 月**時点（**2026-10** スナップショット）で把握している Preset の内容です。機密性の高い音声を送る前に、各 Provider の最新の規約を確認してください。Preset は [`config/presets.js`](config/presets.js) 内のデータであり、追加にコードは不要です（[CONTRIBUTING](CONTRIBUTING.md) 参照）。
+無料枠の提供状況、クォータ、モデル ID は頻繁に変わります。この表は **2026 年 10 月**時点（**2026-10** スナップショット）で把握している Preset の内容です。機密性の高い音声を送る前に、各 Provider の最新の規約を確認してください。Preset は [`config/presets.json`](config/presets.json) 内のデータであり、追加にコードは不要です（[CONTRIBUTING](CONTRIBUTING.md) 参照）。
 
 ### 追加のリクエストフィールド
 
@@ -311,7 +311,7 @@ CI は push と pull request のたびに同じチェックを実行します。
 - ローカルの zh→ja 認識は、同梱の WhisperLiveKit v0.2.26 `large-v3` イメージと compose フラグで動作します。`small` モデルや WhisperLiveKit 自身の翻訳フラグを使うと、代わりに英語が返ることがあります。WhisperLiveKit 側の翻訳は決して有効にしないでください。
 - **実機での検証はまだです。** スマートフォンへのインストールと端末上のチェックは未実施で、署名なし IPA の macOS ビルドもまだ実行していません。
 - `bun run build:apk` で生成される APK はデバッグ署名済みで arm64 専用です。IPA は未署名です。アプリストアでの公開はありません。
-- 言語の自動検出、話者ダイアライゼーション、アカウント、決済、分析はスコープ外です。
+- 言語の自動検出は Language Pair 内に限られます。話者ダイアライゼーション、アカウント、決済、分析はスコープ外です。v0.0.x の Converse は手動の Turn のみで、v0.1 は ASR Provider が Language Pair に対応する言語タグを報告する場合に限り Auto Turn を提供します（[ADR-0003](docs/adr/0003-flutter-clients-and-one-go-core.md)）。
 
 ## ドキュメント
 

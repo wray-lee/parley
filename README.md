@@ -151,7 +151,7 @@ The translator is any OpenAI-compatible endpoint. A Preset supplies the base URL
 | `moonshot` | China (mainland-reachable) | No | Provider terms state prompts are not used for training. |
 | `cerebras` | Global, US-hosted | No | Provider terms state inference data is not used for training. |
 
-Free-tier availability, quotas and model IDs change often; the table describes the Presets as understood in **October 2026** (**2026-10** snapshot). Check each Provider's current terms before sending confidential speech. Presets are data in [`config/presets.js`](config/presets.js); adding one needs no code (see [CONTRIBUTING](CONTRIBUTING.md)).
+Free-tier availability, quotas and model IDs change often; the table describes the Presets as understood in **October 2026** (**2026-10** snapshot). Check each Provider's current terms before sending confidential speech. Presets are data in [`config/presets.json`](config/presets.json); adding one needs no code (see [CONTRIBUTING](CONTRIBUTING.md)).
 
 ### Extra request fields
 
@@ -311,7 +311,7 @@ CI runs the same checks on every push and pull request. Test seams and policy ar
 - Local zh→ja recognition works with the shipped WhisperLiveKit v0.2.26 `large-v3` image and compose flags; a `small` model or WhisperLiveKit's own translation flags can return English instead. Never enable WhisperLiveKit-side translation.
 - **Not yet verified on real phones.** Phone installation and on-device checks are still pending, and the unsigned IPA macOS build has not been exercised.
 - The APK from `bun run build:apk` is debug-signed and arm64-only; the IPA is unsigned. No app-store publishing.
-- Language auto-detection, speaker diarization, accounts, payments and analytics are out of scope.
+- Language auto-detection beyond the Language Pair, speaker diarization, accounts, payments and analytics are out of scope. Converse in v0.0.x is manual-only; v0.1 adds Auto Turn only when the ASR Provider reports pair-capable language tags ([ADR-0003](docs/adr/0003-flutter-clients-and-one-go-core.md)).
 
 ## Documentation
 

@@ -24,8 +24,8 @@ bun scripts/demo-smoke.mjs    # keyless Demo Mode over the real Server Host
 
 Parley tests exactly two seams. Do not add tests that assert private state or internal call order.
 
-1. **Seam 1 — Session core.** Drive a Session with protocol messages, audio frames, a fake clock and scripted fake Providers; assert on emitted protocol events and Segment log records. Covers Cut triggers, Hold/merge/retry, ordering, context and Glossary, Turn routing/Gating, Demo labelling and errors.
-2. **Seam 2 — Provider contract.** Replay recorded real wire traffic through one adapter and assert the normalised events it emits. Recordings are captured once from live services, stored under `tests/contract/fixtures/<provider>/`, and **must have keys, request ids and personal endpoints stripped**.
+1. **Seam 1 — Session core.** Drive a Session with protocol messages, audio frames, a fake clock and scripted fake Providers; assert on emitted protocol events and Segment log records. Covers Cut triggers, Hold/merge/retry, ordering, context and Glossary, Turn routing/Gating, Demo labelling and errors. The frozen Session Traces in `spec/traces/` are the parity oracle; after v0.0.2 a behaviour fix must re-record the traces it touches with `bun run traces:record` (see `spec/traces/README.md`).
+2. **Seam 2 — Provider contract.** Replay recorded real wire traffic through one adapter and assert the normalised events it emits. Recordings are captured once from live services, stored under `spec/fixtures/<provider>/`, and **must have keys, request ids and personal endpoints stripped**.
 
 Live checks against real services (`scripts/live-check-*.mjs`) are acceptance scripts, not CI tests. They need keys or local models and write only to gitignored local directories. CI runs lint, the test suite and the keyless demo smoke (`.github/workflows/ci.yml`).
 
@@ -128,19 +128,19 @@ Example (from `packs/conference_zh2ja.tsv`):
 
 ## Adding a Preset
 
-Presets are **data only** in `config/presets.js`. Adding one needs no code and no registry edit; the session loader uses `LLM_PRESET` to find it. You supply only a key (plus a base URL/model for `custom`).
+Presets are **data only** in `config/presets.json`. Adding one needs no code and no registry edit; the session loader uses `LLM_PRESET` to find it. You supply only a key (plus a base URL/model for `custom`).
 
-```js
-example: {
-  id: 'example',
-  baseUrl: 'https://api.example.com/v1',
-  model: 'example-model',
-  trainsOnData: true,             // be conservative and truthful
-  region: 'Global / China (mainland-reachable) / EU / local',
-  docs: 'https://example.com/docs',
-  requiresKey: true,
-  note: 'One line shown in Settings.',
-},
+```json
+"example": {
+  "id": "example",
+  "baseUrl": "https://api.example.com/v1",
+  "model": "example-model",
+  "trainsOnData": true,
+  "region": "Global / China (mainland-reachable) / EU / local",
+  "docs": "https://example.com/docs",
+  "requiresKey": true,
+  "note": "One line shown in Settings."
+}
 ```
 
 Rules:
@@ -219,7 +219,7 @@ export function create({ apiKey = '', WebSocket: WebSocketImpl = globalThis.WebS
 }
 ```
 
-- Use `direction.src`; never auto-detect or hardcode a language.
+- Use `direction.src`; never hardcode a language or derive one from audio or text. Provider-reported language tags are the only exception: the Go core may use them for pair-restricted Auto Turn (ADR-0003), while the JavaScript oracle stays Manual.
 - Emit Partial for unstable hypotheses and Stable Prefix for confirmed text. If the adapter performs its own Stable Prefix agreement, do **not** set `revisable` (the Session would derive a duplicate prefix).
 - `acceptsLive: false` makes the Session reject live microphone audio with a clear error, as the mock does.
 
@@ -243,7 +243,7 @@ export function create({ url, apiKey } = {}) {
 
 **Tests and wiring**
 
-- Add a Seam 2 test under `tests/contract/` and a stripped fixture under `tests/contract/fixtures/<provider>/`. Run `bun test tests/contract/<file>.test.js`.
+- Add a Seam 2 test under `tests/contract/` and a stripped fixture under `spec/fixtures/<provider>/`. Run `bun test tests/contract/<file>.test.js`.
 - Wire new options into `hosts/node/config.js` and `.env.example`; the app's Settings/provider wiring is in `app/device-host.js` and `app/settings.js` if it should be selectable on-device.
 - Add the option to `deploy/README.md` or `README.md` only if users must set it.
 - Do not copy a reference implementation from an AGPL/GPL/LGPL project. Write the protocol client from the Provider's public documentation and record its real traffic in the fixture.
