@@ -95,7 +95,12 @@ const port = await freePort();
 const startedAt = Date.now();
 // Bun auto-loads .env; this smoke must behave like a clean clone with none.
 const runtimeArgs = process.versions.bun ? ['--no-env-file'] : [];
-const server = spawn(process.execPath, [...runtimeArgs, 'hosts/node/server.js'], {
+// PARLEY_SERVER_CMD runs the same checks against another Server Host binary
+// (the Go port); the default stays the Bun host.
+const serverCommand = process.env.PARLEY_SERVER_CMD
+  ? process.env.PARLEY_SERVER_CMD.split(/\s+/)
+  : [process.execPath, ...runtimeArgs, 'hosts/node/server.js'];
+const server = spawn(serverCommand[0], serverCommand.slice(1), {
   cwd: ROOT,
   env: demoEnv(port),
   stdio: ['ignore', 'pipe', 'pipe'],
