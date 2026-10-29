@@ -1,0 +1,13 @@
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Constructors take public parameter names and assign private fields;
+    # initializing formals would force underscore-named parameters.
+    prefer_initializing_formals: false

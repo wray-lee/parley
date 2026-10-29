@@ -1,0 +1,27 @@
+name: parley
+description: Parley's Flutter client for Android, iOS and web.
+publish_to: 'none'
+version: 0.1.0+1000
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  audio_session: 0.2.4
+  cupertino_icons: 1.0.9
+  flutter:
+    sdk: flutter
+  flutter_soloud: 5.2.2
+  http: ^1.2.0
+  material_ui: 1.8.0
+  record: 7.1.2
+  web: ^1.1.0
+  web_socket_channel: 3.0.3
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
