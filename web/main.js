@@ -27,7 +27,7 @@ let stopStreaming = null;
 let mic = null;
 let ttsFormat = 'wav';
 let ttsSeg = null;
-let audioTts = false; // the Server Host sends tts_chunk audio, not system TTS
+let audioTts = false; // hello.tts === 'audio': the host streams tts_chunk audio
 
 $('start').addEventListener('click', start);
 $('stop').addEventListener('click', stop);
@@ -120,8 +120,8 @@ function onMessage(message) {
 
 // System TTS: the Segment carries text only, so the browser speaks it and
 // reports playback so gating and the Converse auto-switch use real timing.
-// shortcut: the first spoken Segment of an audio-TTS session may briefly use
-// the browser voice until tts_begin reveals the mode; add hello.tts to close it.
+// hello.tts fixes the mode up front, so an audio-TTS Session never speaks a
+// Segment with the browser voice.
 function speakSegment(segment) {
   const lang = segment.direction?.tgt ?? '';
   send({ type: 'playback', seg_id: segment.seg_id, state: 'start' });
@@ -136,6 +136,9 @@ function speakSegment(segment) {
 }
 
 function onHello(message) {
+  // An older Server Host omits hello.tts; the first tts_begin reveals audio mode.
+  if (message.tts === 'audio') audioTts = true;
+  else if (message.tts === 'system') audioTts = false;
   subtitles.setDemo(message.demo);
   renderPairs(message.pairs ?? []);
   renderPacks(message.packs ?? []);

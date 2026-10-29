@@ -189,6 +189,10 @@ func (s *Session) Hello() protocol.Hello {
 		Packs:        make([]protocol.PackRef, 0, len(s.registry.Packs)),
 		PresetsInUse: []protocol.Preset{},
 		Demo:         s.demo(),
+		TTS:          "audio",
+	}
+	if s.tts.Name() == "system" {
+		hello.TTS = "system"
 	}
 	if hello.Pairs == nil {
 		hello.Pairs = []protocol.Pair{}

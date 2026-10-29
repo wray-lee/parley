@@ -168,14 +168,9 @@ type Config struct {
 	LLM     TranslatorOptions
 	// ASROptions configure the real ASR adapters.
 	ASROptions ASROptions
-}
-
-// SelectTTS builds the TTS Provider named by TTS_PROVIDER.
-func SelectTTS(name string) (core.TTS, error) {
-	if name != "mock" {
-		return nil, fmt.Errorf("TTS_PROVIDER %q is not supported by this build; use mock", name)
-	}
-	return NewMockTTS(), nil
+	// TTSOptions and Voices configure the real TTS adapters.
+	TTSOptions TTSOptions
+	Voices     Voices
 }
 
 // Select builds the three Providers or fails loudly on an unsupported name.
@@ -200,7 +195,7 @@ func Select(config Config) (core.ASR, core.Translator, core.TTS, error) {
 	default:
 		return nil, nil, nil, fmt.Errorf("translator %q is not supported by this build; use mock or openai", config.Translator)
 	}
-	tts, err := SelectTTS(config.TTS)
+	tts, err := SelectTTS(config.TTS, config.TTSOptions, config.Voices)
 	if err != nil {
 		return nil, nil, nil, err
 	}

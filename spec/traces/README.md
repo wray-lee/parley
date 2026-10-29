@@ -18,8 +18,10 @@ line. Line order is significant. Three record types exist:
 | `input` | `{type, kind, ...}` — everything the core receives |
 | `output` | `{type, kind, ...}` — everything the core emits |
 
-`format` is `1`. A change to this grammar bumps the number and re-records every
-trace. Binary data (TTS audio) is encoded as `{"$b64": "<base64>"}`.
+`format` is `2`. A change to this grammar bumps the number and re-records every
+trace. Format 2 adds the `provider_error` input kind; format-1 traces have no
+Provider errors and stay replayable. Binary data (TTS audio) is encoded as
+`{"$b64": "<base64>"}`.
 
 `meta.registry` is the resolved registry (`directions`, `packs`, `pairs`), not
 file names, so a replay needs no filesystem. `meta.providers` carries only the
@@ -36,6 +38,7 @@ names and flags a replay needs to reconstruct the fake Providers.
 | `asr` | `events` | the scripted ASR response to the preceding `push` |
 | `translator` | `call`, `chunk` | one chunk yielded by translator call `call` |
 | `tts` | `response` | the scripted TTS response (`format`, `data`) |
+| `provider_error` | `provider`, `error`, `call` (translator only) | the named Provider throws this error on its next call; a translator error follows that call's chunks |
 
 `idle` is a real input, not a convenience: it fixes the points at which async
 commit work is allowed to settle. A replay that flushes at different points can
@@ -45,8 +48,8 @@ The fake clock starts at `meta.clockStart`. `advance` fires every timer due at o
 before the new time in chronological order; timers with equal deadlines fire in
 the order they were scheduled. The Go fake clock must use the same rule.
 
-Format 1 does not represent Provider errors. A trace that needs one adds a
-`provider_error` input kind and bumps the format.
+`provider_error.error` carries `message`, and optionally `kind` and `fallback`
+so a Provider error event replays exactly.
 
 ## Outputs
 
@@ -100,6 +103,9 @@ Current traces:
 - `listen-glossary.jsonl` — a selected Domain Pack's Glossary replaces
   `{{GLOSSARY}}` in the Direction system prompt; the exact translator messages
   reach the trace.
+- `tts-failure.jsonl` — the TTS Provider throws; the Segment and its log are
+  emitted as usual (subtitles stay), the `tts` protocol error is emitted, and
+  no `tts_*` event follows.
 - `asr-deepgram-listen.jsonl`, `asr-paraformer-listen.jsonl`,
   `asr-whisperlivekit-listen.jsonl` — Listen on the recorded ASR contract
   fixture for each adapter (`spec/fixtures/<provider>/`), with system TTS so

@@ -10,12 +10,32 @@ import { fileURLToPath } from 'node:url';
 import { createSession } from '../../core/session.js';
 import { makeClock, pcmFrame } from './fakes.js';
 
-export const TRACE_FORMAT = 1;
+export const TRACE_FORMAT = 2;
 export const TRACE_DIR = fileURLToPath(new URL('../../spec/traces/', import.meta.url));
 
 const base64 = (data) => Buffer.from(data).toString('base64');
 const replacer = (key, value) =>
   value instanceof Uint8Array ? { $b64: base64(value) } : value;
+
+// Provider errors are inputs, not outputs: the fake Provider throws the same
+// error the JavaScript adapter did on the recorded run.
+const providerError = (provider, error, call) => ({
+  kind: 'provider_error',
+  provider,
+  ...(call === undefined ? {} : { call }),
+  error: {
+    message: error?.message ?? String(error),
+    ...(error?.kind ? { kind: error.kind } : {}),
+    ...(error?.fallback ? { fallback: error.fallback } : {}),
+  },
+});
+
+const errorFrom = (spec) => {
+  const error = new Error(spec.message);
+  if (spec.kind) error.kind = spec.kind;
+  if (spec.fallback) error.fallback = spec.fallback;
+  return error;
+};
 
 export function toJsonValue(value) {
   return JSON.parse(JSON.stringify(value, replacer));
@@ -76,9 +96,14 @@ export function createTraceRecorder({
   if (asr.push) {
     const push = asr.push.bind(asr);
     asr.push = (frame) => {
-      const events = push(frame);
-      input({ kind: 'asr', events: events ?? [] });
-      return events;
+      try {
+        const events = push(frame);
+        input({ kind: 'asr', events: events ?? [] });
+        return events;
+      } catch (error) {
+        input(providerError('asr', error));
+        throw error;
+      }
     };
   }
 
@@ -87,9 +112,14 @@ export function createTraceRecorder({
   translator.translate = async function* (request) {
     const id = call++;
     output('request', { provider: 'translator', request });
-    for await (const chunk of translate(request)) {
-      input({ kind: 'translator', call: id, chunk });
-      yield chunk;
+    try {
+      for await (const chunk of translate(request)) {
+        input({ kind: 'translator', call: id, chunk });
+        yield chunk;
+      }
+    } catch (error) {
+      input(providerError('translator', error, id));
+      throw error;
     }
   };
 
@@ -97,9 +127,14 @@ export function createTraceRecorder({
     const synthesize = tts.synthesize.bind(tts);
     tts.synthesize = async (request) => {
       output('request', { provider: 'tts', request });
-      const response = await synthesize(request);
-      input({ kind: 'tts', response });
-      return response;
+      try {
+        const response = await synthesize(request);
+        input({ kind: 'tts', response });
+        return response;
+      } catch (error) {
+        input(providerError('tts', error));
+        throw error;
+      }
     };
   }
 
@@ -160,13 +195,22 @@ export async function replayTrace(text) {
     .filter((record) => record.type === 'output')
     .map(({ type, ...record }) => record);
 
-  const asrResponses = inputs.filter((entry) => entry.kind === 'asr').map((entry) => entry.events);
-  const ttsResponses = inputs.filter((entry) => entry.kind === 'tts')
-    .map((entry) => fromJsonValue(entry.response));
+  // Provider calls consume tts/asr responses and provider_error inputs in
+  // trace order; a translator call's chunks may end in an error.
+  const asrEntries = [];
+  const ttsEntries = [];
   const translatorCalls = [];
   for (const entry of inputs) {
-    if (entry.kind !== 'translator') continue;
-    (translatorCalls[entry.call] ??= []).push(entry.chunk);
+    if (entry.kind === 'asr') asrEntries.push({ events: entry.events });
+    else if (entry.kind === 'tts') ttsEntries.push({ response: fromJsonValue(entry.response) });
+    else if (entry.kind === 'translator') {
+      (translatorCalls[entry.call] ??= []).push({ chunk: entry.chunk });
+    } else if (entry.kind === 'provider_error') {
+      const failed = { error: errorFrom(entry.error) };
+      if (entry.provider === 'asr') asrEntries.push(failed);
+      else if (entry.provider === 'tts') ttsEntries.push(failed);
+      else (translatorCalls[entry.call] ??= []).push(failed);
+    }
   }
 
   const clock = makeClock(meta.clockStart);
@@ -179,22 +223,30 @@ export async function replayTrace(text) {
     revisable: meta.providers.asr.revisable,
     open() {},
     close() {},
-    push: () => asrResponses.shift() ?? [],
+    push() {
+      const entry = asrEntries.shift() ?? { events: [] };
+      if (entry.error) throw entry.error;
+      return entry.events;
+    },
   };
   let call = 0;
   const translator = {
     name: meta.providers.translator.name,
     async *translate(request) {
       push('request', { provider: 'translator', request: toJsonValue(request) });
-      for (const chunk of translatorCalls[call++] ?? []) yield chunk;
+      for (const entry of translatorCalls[call++] ?? []) {
+        if (entry.error) throw entry.error;
+        yield entry.chunk;
+      }
     },
   };
-  let ttsCall = 0;
   const tts = {
     name: meta.providers.tts.name,
     async synthesize(request) {
       push('request', { provider: 'tts', request: toJsonValue(request) });
-      return ttsResponses[ttsCall++];
+      const entry = ttsEntries.shift() ?? {};
+      if (entry.error) throw entry.error;
+      return entry.response;
     },
   };
 

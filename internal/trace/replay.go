@@ -6,6 +6,7 @@ package trace
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -62,14 +63,15 @@ func Replay(text string) error {
 	if meta.Type != "meta" {
 		return fmt.Errorf("trace must start with a meta record")
 	}
-	if meta.Format != 1 {
+	// Format 2 adds the provider_error input kind; format 1 traces stay valid.
+	if meta.Format != 1 && meta.Format != 2 {
 		return fmt.Errorf("unsupported trace format %d", meta.Format)
 	}
 
 	var inputs []map[string]any
-	asrResponses := [][]core.ASREvent{}
-	translatorCalls := [][]string{}
-	ttsResponses := []protocol.Audio{}
+	asrResponses := []traceASRResponse{}
+	translatorCalls := []traceTranslatorCall{}
+	ttsResponses := []traceTTSResponse{}
 	expected := []any{}
 
 	for _, line := range lines[1:] {
@@ -82,19 +84,40 @@ func Replay(text string) error {
 			inputs = append(inputs, record)
 			switch record["kind"] {
 			case "asr":
-				asrResponses = append(asrResponses, decodeASREvents(record["events"]))
+				asrResponses = append(asrResponses, traceASRResponse{events: decodeASREvents(record["events"])})
 			case "translator":
 				call := int(record["call"].(float64))
 				for len(translatorCalls) <= call {
-					translatorCalls = append(translatorCalls, nil)
+					translatorCalls = append(translatorCalls, traceTranslatorCall{})
 				}
-				translatorCalls[call] = append(translatorCalls[call], record["chunk"].(string))
+				translatorCalls[call].chunks = append(translatorCalls[call].chunks, record["chunk"].(string))
 			case "tts":
 				responses, err := decodeTTSResponse(record["response"])
 				if err != nil {
 					return err
 				}
-				ttsResponses = append(ttsResponses, responses...)
+				for _, response := range responses {
+					ttsResponses = append(ttsResponses, traceTTSResponse{audio: response})
+				}
+			case "provider_error":
+				failure, err := decodeProviderError(record["error"])
+				if err != nil {
+					return err
+				}
+				switch record["provider"] {
+				case "asr":
+					asrResponses = append(asrResponses, traceASRResponse{err: failure})
+				case "tts":
+					ttsResponses = append(ttsResponses, traceTTSResponse{err: failure})
+				case "translator":
+					call := int(record["call"].(float64))
+					for len(translatorCalls) <= call {
+						translatorCalls = append(translatorCalls, traceTranslatorCall{})
+					}
+					translatorCalls[call].err = failure
+				default:
+					return fmt.Errorf("provider_error for unknown provider %v", record["provider"])
+				}
 			}
 		case "output":
 			delete(record, "type")
@@ -175,6 +198,40 @@ func decodeASREvents(value any) []core.ASREvent {
 	return events
 }
 
+// traceASRResponse, traceTranslatorCall and traceTTSResponse script one
+// Provider call: a result or the provider_error recorded in its place.
+type traceASRResponse struct {
+	events []core.ASREvent
+	err    error
+}
+
+type traceTranslatorCall struct {
+	chunks []string
+	err    error
+}
+
+type traceTTSResponse struct {
+	audio protocol.Audio
+	err   error
+}
+
+func decodeProviderError(value any) (error, error) {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("provider_error without an error object")
+	}
+	message, _ := object["message"].(string)
+	kind, _ := object["kind"].(string)
+	fallback, _ := object["fallback"].(string)
+	if kind != "" || fallback != "" {
+		if kind == "" {
+			kind = "protocol"
+		}
+		return &protocol.ProviderError{Kind: kind, Message: message, Fallback: fallback}, nil
+	}
+	return errors.New(message), nil
+}
+
 func decodeTTSResponse(value any) ([]protocol.Audio, error) {
 	if value == nil {
 		return nil, nil
@@ -231,7 +288,7 @@ type traceASR struct {
 	name        string
 	acceptsLive bool
 	revisable   bool
-	responses   [][]core.ASREvent
+	responses   []traceASRResponse
 	index       int
 }
 
@@ -244,14 +301,14 @@ func (a *traceASR) Push([]int16, int64) ([]core.ASREvent, error) {
 	if a.index >= len(a.responses) {
 		return nil, nil
 	}
-	events := a.responses[a.index]
+	response := a.responses[a.index]
 	a.index++
-	return events, nil
+	return response.events, response.err
 }
 
 type traceTranslator struct {
 	name  string
-	calls [][]string
+	calls []traceTranslatorCall
 	index int
 	push  func(string, map[string]any)
 }
@@ -260,20 +317,20 @@ func (t *traceTranslator) Name() string { return t.name }
 
 func (t *traceTranslator) Translate(request protocol.TranslatorRequest, onChunk func(string)) error {
 	t.push("request", map[string]any{"provider": "translator", "request": request})
-	var chunks []string
+	var call traceTranslatorCall
 	if t.index < len(t.calls) {
-		chunks = t.calls[t.index]
+		call = t.calls[t.index]
 	}
 	t.index++
-	for _, chunk := range chunks {
+	for _, chunk := range call.chunks {
 		onChunk(chunk)
 	}
-	return nil
+	return call.err
 }
 
 type traceTTS struct {
 	name      string
-	responses []protocol.Audio
+	responses []traceTTSResponse
 	index     int
 	push      func(string, map[string]any)
 }
@@ -285,9 +342,9 @@ func (t *traceTTS) Synthesize(request protocol.TTSRequest) (protocol.Audio, erro
 	if t.index >= len(t.responses) {
 		return protocol.Audio{}, fmt.Errorf("trace has no tts response for call %d", t.index)
 	}
-	audio := t.responses[t.index]
+	response := t.responses[t.index]
 	t.index++
-	return audio, nil
+	return response.audio, response.err
 }
 
 type fakeClock struct {

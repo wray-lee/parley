@@ -38,6 +38,7 @@ type Server struct {
 	forcedInstruction string
 	sample            providers.Sample
 	presets           *providers.Presets
+	voices            providers.Voices
 	segmentLog        func(protocol.SegmentLog)
 	warn              func(string)
 	httpServer        *http.Server
@@ -89,13 +90,20 @@ func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
 	}
 	server.presets = presets
 
+	voices, err := providers.LoadVoices(assets)
+	if err != nil {
+		return nil, err
+	}
+	server.voices = voices
+
 	// Like the JavaScript host, validate the ASR/TTS names at startup but
 	// build the translator per connection: bad LLM_* config is then a
 	// connection error event, not a crash before /healthz answers.
-	if _, err := providers.SelectASR(server.cfg.ASRProvider, server.providerConfig().ASROptions, server.sample); err != nil {
+	providerConfig := server.providerConfig()
+	if _, err := providers.SelectASR(server.cfg.ASRProvider, providerConfig.ASROptions, server.sample); err != nil {
 		return nil, err
 	}
-	if _, err := providers.SelectTTS(server.cfg.TTSProvider); err != nil {
+	if _, err := providers.SelectTTS(server.cfg.TTSProvider, providerConfig.TTSOptions, server.voices); err != nil {
 		return nil, err
 	}
 	return server, nil
@@ -112,6 +120,11 @@ func (s *Server) providerConfig() providers.Config {
 			DeepgramAPIKey:    s.cfg.ASROptions.DeepgramAPIKey,
 			DashscopeAPIKey:   s.cfg.ASROptions.DashscopeAPIKey,
 		},
+		TTSOptions: providers.TTSOptions{
+			KokoroURL: s.cfg.TTSOptions.KokoroURL, AzureKey: s.cfg.TTSOptions.AzureKey,
+			AzureRegion: s.cfg.TTSOptions.AzureRegion, Warn: s.warn,
+		},
+		Voices: s.voices,
 		LLM: providers.TranslatorOptions{
 			Preset:    s.cfg.LLM.Preset,
 			BaseURL:   s.cfg.LLM.BaseURL,

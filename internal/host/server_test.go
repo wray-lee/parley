@@ -177,6 +177,9 @@ func TestDemoSessionOverWebSocket(t *testing.T) {
 	if !hello.Demo || len(hello.Pairs) != 1 || len(hello.Packs) != 2 || hello.PresetsInUse == nil {
 		t.Fatalf("hello = %+v", hello)
 	}
+	if hello.TTS != "audio" {
+		t.Fatalf("hello.tts = %q, want audio for the mock TTS", hello.TTS)
+	}
 	if hello.Pairs[0].A != "ja" || hello.Pairs[0].B != "zh" || !hello.Pairs[0].Converse {
 		t.Fatalf("pairs = %+v", hello.Pairs)
 	}
@@ -239,6 +242,23 @@ func TestDemoSessionOverWebSocket(t *testing.T) {
 	}
 	if binaryChunks == 0 {
 		t.Fatal("no binary tts chunk")
+	}
+}
+
+func TestHelloDeclaresSystemTTSForTheSystemProvider(t *testing.T) {
+	_, port, _ := startServer(t, map[string]string{"TTS_PROVIDER": "system"})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/ws", port), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	var hello protocol.Hello
+	readJSON(t, ctx, conn, &hello)
+	if hello.TTS != "system" {
+		t.Fatalf("hello.tts = %q, want system", hello.TTS)
 	}
 }
 

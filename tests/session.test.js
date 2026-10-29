@@ -1032,6 +1032,41 @@ test('Listen live Session Trace records the v0.0.3 Gating divergence', async () 
   checkTrace(trace);
 });
 
+test('TTS failure Session Trace keeps the subtitle and records the error', async () => {
+  const tts = {
+    name: 'failing',
+    calls: [],
+    async synthesize(request) {
+      this.calls.push(request);
+      throw new Error('tts provider exploded');
+    },
+  };
+  const { session, clock, events, records, trace } = build({
+    tts,
+    trace: 'tts-failure',
+  });
+  start(session);
+
+  await speechThenSilence(session, clock, 18);
+
+  const segments = events.filter((event) => event.type === 'segment');
+  assert.equal(segments.length, 1);
+  assert.equal(segments[0].tgt, 'translated-one');
+  const errors = events.filter((event) => event.type === 'error');
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].provider, 'tts');
+  assert.equal(errors[0].kind, 'protocol');
+  assert.match(errors[0].message, /tts provider exploded/);
+  assert.equal(
+    events.filter((event) => event.type.startsWith('tts_')).length,
+    0,
+    'a failed TTS must not emit audio events',
+  );
+  assert.equal(records.length, 1);
+  assert.equal(records[0].tts_first_chunk, null);
+  checkTrace(trace);
+});
+
 test('Listen Hold-merge Session Trace is the frozen oracle', async () => {
   const asr = scriptedAsr([
     { at: 20, events: [{ type: 'stable', text: 'part one' }] },
