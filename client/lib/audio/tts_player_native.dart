@@ -23,22 +23,25 @@ class SoloudTtsPlayer implements TtsPlayer {
       format: BufferType.auto,
     );
     final done = Completer<void>();
+    SoundHandle? handle;
     final sub = source.soundEvents.listen((event) {
       if (event.event == SoundEventType.handleIsNoMoreValid &&
-          _handle != null &&
-          event.handle == _handle &&
+          event.handle == handle &&
           !done.isCompleted) {
         done.complete();
       }
     });
     try {
       SoLoud.instance.addAudioDataStream(source, data);
-      _handle = SoLoud.instance.play(source);
+      handle = SoLoud.instance.play(source);
+      _handle = handle;
       SoLoud.instance.setDataIsEnded(source);
       await done.future.timeout(_timeout);
     } finally {
       await sub.cancel();
-      _handle = null;
+      // An interrupted or stopped clip may settle after the next one started;
+      // never clear the newer handle.
+      if (_handle == handle) _handle = null;
       await SoLoud.instance.disposeSource(source);
     }
   }

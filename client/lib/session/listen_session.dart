@@ -409,7 +409,9 @@ class ListenSession extends ChangeNotifier {
 
   void _reportPlayback(int segId, String state) {
     debugPrint('PARLEY tts $segId $state');
-    _send({'type': 'playback', 'seg_id': segId, 'state': state});
+    if (!_disposed) {
+      _send({'type': 'playback', 'seg_id': segId, 'state': state});
+    }
   }
 
   void _sendBinary(Uint8List frame) => _transport.sendBinary(frame);

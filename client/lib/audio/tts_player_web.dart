@@ -38,7 +38,13 @@ class HtmlAudioTtsPlayer implements TtsPlayer {
       await done.future.timeout(const Duration(seconds: 30));
     } finally {
       element.pause();
-      await _release();
+      // An interrupted clip can settle after the next one started; never
+      // release the newer element.
+      if (identical(_element, element)) {
+        await _release();
+      } else {
+        web.URL.revokeObjectURL(url);
+      }
     }
   }
 

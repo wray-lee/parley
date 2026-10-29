@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:parley/audio/audio_capture_api.dart';
 import 'package:parley/audio/tts_player_api.dart';
+import 'package:parley/audio/tts_system.dart';
 import 'package:parley/model/protocol.dart';
 import 'package:parley/transport/transport.dart';
 
@@ -89,6 +90,46 @@ class FakeTtsPlayer implements TtsPlayer {
 
   @override
   Future<void> stop() async {}
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+  }
+}
+
+/// A system speech engine whose utterances end only when the test says so.
+class FakeSystemTtsEngine implements SystemTtsEngine {
+  final List<String> spoken = [];
+  final List<String?> languages = [];
+  final List<Completer<void>> pending = [];
+  int stops = 0;
+  bool disposed = false;
+  int _active = 0;
+  int maxActive = 0;
+
+  @override
+  Future<void> speak(String text, {String? language}) {
+    spoken.add(text);
+    languages.add(language);
+    _active++;
+    if (_active > maxActive) maxActive = _active;
+    final completer = Completer<void>();
+    pending.add(completer);
+    return completer.future.whenComplete(() => _active--);
+  }
+
+  void complete([int index = 0]) {
+    if (!pending[index].isCompleted) pending[index].complete();
+  }
+
+  void fail(Object error, [int index = 0]) {
+    if (!pending[index].isCompleted) pending[index].completeError(error);
+  }
+
+  @override
+  Future<void> stop() async {
+    stops++;
+  }
 
   @override
   Future<void> dispose() async {

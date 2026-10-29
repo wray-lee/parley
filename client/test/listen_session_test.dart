@@ -18,7 +18,7 @@ DemoClip testClip() => DemoClip.fromJson({
   'tgt': 'ja',
 });
 
-Map<String, dynamic> helloMessage() => {
+Map<String, dynamic> helloMessage({String? tts}) => {
   'type': 'hello',
   'pairs': [
     {
@@ -34,6 +34,7 @@ Map<String, dynamic> helloMessage() => {
   'packs': <dynamic>[],
   'presetsInUse': <dynamic>[],
   'demo': true,
+  'tts': ?tts,
 };
 
 Map<String, dynamic> segment(
@@ -66,20 +67,35 @@ List<String> captureDebugPrint() {
   FakeTransport transport,
   FakeAudioCapture audio,
   FakeTtsPlayer tts,
+  FakeSystemTtsEngine system,
   ListenSession session,
 })
 makeSession() {
   final transport = FakeTransport();
   final audio = FakeAudioCapture();
   final tts = FakeTtsPlayer();
+  final system = FakeSystemTtsEngine();
   final session = ListenSession(
     transport: transport,
     audio: audio,
     ttsPlayer: tts,
+    systemTtsEngine: system,
     loadDemoClip: () async => testClip(),
   );
-  return (transport: transport, audio: audio, tts: tts, session: session);
+  return (
+    transport: transport,
+    audio: audio,
+    tts: tts,
+    system: system,
+    session: session,
+  );
 }
+
+List<String> playbackOf(FakeTransport transport) => transport.sentText
+    .map((message) => jsonDecode(message) as Map<String, dynamic>)
+    .where((message) => message['type'] == 'playback')
+    .map((message) => '${message['seg_id']}:${message['state']}')
+    .toList();
 
 void main() {
   test(
@@ -100,6 +116,7 @@ void main() {
         'mode': 'listen',
         'src': 'zh',
         'tgt': 'ja',
+        'packs': <dynamic>[],
       });
       expect(jsonDecode(s.transport.sentText[1]), {
         'type': 'sample',
@@ -172,6 +189,109 @@ void main() {
       [2],
     ]);
     expect(s.tts.playedFormats, ['mp3', 'mp3']);
+  });
+
+  test('hello.tts=system speaks each spoken Segment itself', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit(helloMessage(tts: 'system'));
+    await pumpEventQueue();
+    await s.session.start();
+    expect(s.session.tts, 'system');
+
+    s.transport.emit(segment(1, 'first'));
+    s.transport.emit(segment(2, 'silent', speak: false));
+    s.transport.emit(segment(3, 'third'));
+    await pumpEventQueue();
+
+    expect(s.system.spoken, ['first']);
+    expect(s.system.languages, ['ja']);
+    expect(playbackOf(s.transport), ['1:start']);
+
+    s.system.complete(0);
+    await pumpEventQueue();
+    expect(s.system.spoken, ['first', 'third']);
+    expect(playbackOf(s.transport), ['1:start', '1:end', '3:start']);
+
+    s.system.complete(1);
+    await pumpEventQueue();
+    expect(playbackOf(s.transport), ['1:start', '1:end', '3:start', '3:end']);
+    expect(s.session.segments.map((segment) => segment.translation).toList(), [
+      'first',
+      'silent',
+      'third',
+    ]);
+  });
+
+  test('an audio TTS Provider never touches the system engine', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit(helloMessage(tts: 'audio'));
+    await pumpEventQueue();
+    await s.session.start();
+    s.transport.emit(segment(1, 'first'));
+    await pumpEventQueue();
+
+    expect(s.session.tts, 'audio');
+    expect(s.system.spoken, isEmpty);
+    expect(playbackOf(s.transport), isEmpty);
+  });
+
+  test('a system TTS error keeps the transcript and the chip stays', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit(helloMessage(tts: 'system'));
+    await pumpEventQueue();
+    await s.session.start();
+    s.transport.emit(segment(1, 'first'));
+    await pumpEventQueue();
+
+    s.system.fail(StateError('engine offline'));
+    await pumpEventQueue();
+    expect(s.session.audioError, contains('engine offline'));
+    expect(s.session.providerErrors['tts'], contains('engine offline'));
+    expect(s.session.segments.single.translation, 'first');
+
+    s.transport.emit(segment(2, 'second'));
+    await pumpEventQueue();
+    expect(s.session.audioError, isNotNull);
+    expect(s.system.spoken, ['first', 'second']);
+  });
+
+  test('Stop cancels system speech and never reports its end twice', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit(helloMessage(tts: 'system'));
+    await pumpEventQueue();
+    await s.session.start();
+    s.transport.emit(segment(1, 'first'));
+    await pumpEventQueue();
+
+    await s.session.stop();
+    expect(s.system.stops, greaterThanOrEqualTo(1));
+    expect(playbackOf(s.transport), ['1:start', '1:end']);
+
+    s.system.complete(0);
+    await pumpEventQueue();
+    expect(playbackOf(s.transport), ['1:start', '1:end']);
+    expect(s.system.spoken, ['first']);
+  });
+
+  test('a server TTS error raises the subtitles-only state', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit(helloMessage());
+    s.transport.emit({
+      'type': 'error',
+      'provider': 'tts',
+      'kind': 'protocol',
+      'message': 'voice missing',
+      'fallback': 'subtitles only',
+    });
+    await pumpEventQueue();
+
+    expect(s.session.audioError, contains('voice missing'));
+    expect(s.session.providerErrors['tts'], contains('voice missing'));
   });
 
   test('Stop then Start begins a new Session: seg_id restarts at 1', () async {

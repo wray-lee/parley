@@ -50,8 +50,14 @@ class FlutterTtsEngine implements SystemTtsEngine {
     }
     final done = Completer<void>();
     _utterance = done;
-    // The handlers above own the utterance's lifetime.
-    _tts.speak(text).ignore();
+    // The handlers above own the utterance's lifetime. 0 means the engine
+    // refused the utterance (iOS resume failure, Android queue flush) and
+    // false is a defensive guard; a hung engine is the watchdog's job.
+    final result = await _tts.speak(text);
+    if (result == false || result == 0) {
+      _utterance = null;
+      throw StateError('system TTS is unavailable');
+    }
     return done.future;
   }
 
@@ -68,9 +74,8 @@ class FlutterTtsEngine implements SystemTtsEngine {
 /// The core releases Gating at `estimateSpeechMs(text) + 1.5 s` when no
 /// playback end arrives; the client waits the same time before unblocking its
 /// queue. String.length counts UTF-16 code units, like the core.
-Duration systemSpeechWatchdog(String text) => Duration(
-  milliseconds: math.min(30000, 1500 + text.length * 180) + 1500,
-);
+Duration systemSpeechWatchdog(String text) =>
+    Duration(milliseconds: math.min(30000, 1500 + text.length * 180) + 1500);
 
 /// Speaks `speak: true` Segments with the platform engine, one at a time, and
 /// reports playback start/end for core-owned Gating.
@@ -119,6 +124,11 @@ class SystemTtsSpeaker {
   void _start(_Utterance utterance) {
     utterance.timer = Timer(watchdog(utterance.text), () {
       debugPrint('PARLEY tts watchdog ${utterance.segId}');
+      // No completion, cancel or error arrived: the engine is hung or
+      // missing. Silence is not a valid outcome, so raise the chip.
+      if (!utterance.detached && !utterance.done.isCompleted) {
+        onError(StateError('system TTS did not report completion'));
+      }
       _settle(utterance);
     });
     _engine
