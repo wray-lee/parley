@@ -92,19 +92,26 @@ func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
 	// Like the JavaScript host, validate the ASR/TTS names at startup but
 	// build the translator per connection: bad LLM_* config is then a
 	// connection error event, not a crash before /healthz answers.
-	if _, _, _, err := providers.Select(providers.Config{
-		ASR: cfg.ASRProvider, Translator: "mock", TTS: cfg.TTSProvider, Sample: sample,
-	}); err != nil {
+	if _, err := providers.SelectASR(server.cfg.ASRProvider, server.providerConfig().ASROptions, server.sample); err != nil {
+		return nil, err
+	}
+	if _, err := providers.SelectTTS(server.cfg.TTSProvider); err != nil {
 		return nil, err
 	}
 	return server, nil
 }
 
-// providerConfig is the Provider selection for every new Session.
+// providerConfig is the Provider selection for every new Session; startup
+// validation reuses its ASR options.
 func (s *Server) providerConfig() providers.Config {
 	return providers.Config{
 		ASR: s.cfg.ASRProvider, Translator: s.cfg.TranslatorProvider, TTS: s.cfg.TTSProvider,
 		Sample: s.sample, Presets: s.presets,
+		ASROptions: providers.ASROptions{
+			WhisperLiveKitURL: s.cfg.ASROptions.WhisperLiveKitURL,
+			DeepgramAPIKey:    s.cfg.ASROptions.DeepgramAPIKey,
+			DashscopeAPIKey:   s.cfg.ASROptions.DashscopeAPIKey,
+		},
 		LLM: providers.TranslatorOptions{
 			Preset:    s.cfg.LLM.Preset,
 			BaseURL:   s.cfg.LLM.BaseURL,

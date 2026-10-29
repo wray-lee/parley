@@ -100,3 +100,9 @@ Current traces:
 - `listen-glossary.jsonl` — a selected Domain Pack's Glossary replaces
   `{{GLOSSARY}}` in the Direction system prompt; the exact translator messages
   reach the trace.
+- `asr-deepgram-listen.jsonl`, `asr-paraformer-listen.jsonl`,
+  `asr-whisperlivekit-listen.jsonl` — Listen on the recorded ASR contract
+  fixture for each adapter (`spec/fixtures/<provider>/`), with system TTS so
+  there is no playback gating. The `asr` inputs are the frozen JavaScript
+  adapters' own output; they are not produced by `bun run traces:record`, and
+  the Go adapter contract tests assert the Go adapters emit the same stream.

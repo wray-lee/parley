@@ -32,6 +32,10 @@ type ASREvent struct {
 	// Glue nil means the default single space; a non-nil empty string means
 	// concatenate without a space (successive prefixes of one hypothesis).
 	Glue *string
+	// StartMS and EndMS are the audio span the Provider reported. The Session
+	// ignores them; contract tests compare them with the fixtures.
+	StartMS int64
+	EndMS   int64
 }
 
 // ASR is the Provider seam for speech recognition.
@@ -388,8 +392,9 @@ func (s *Session) HandleAudio(pcm []int16) {
 func (s *Session) pushASR(pcm []int16) ([]ASREvent, bool) {
 	events, err := s.asr.Push(pcm, s.audioMS)
 	if err != nil {
+		// The JavaScript adapters deliver an error event alongside whatever
+		// hypotheses arrived in the same push; the Session keeps running.
 		s.emitError("asr", err)
-		return nil, false
 	}
 	return events, true
 }
@@ -644,7 +649,9 @@ func (s *Session) commitTranslation(pending *pendingSegment, text string, firstT
 	s.hold.Reset()
 
 	var ttsFirstChunk *int64
-	if speak {
+	// A system TTS is text-only: the client speaks the Segment itself, so the
+	// host emits no audio events (as in the JavaScript oracle).
+	if speak && s.tts.Name() != "system" {
 		audio, err := s.tts.Synthesize(protocol.TTSRequest{Text: text, SegID: segID, Direction: ref})
 		if err != nil {
 			s.emitError("tts", err)

@@ -166,6 +166,8 @@ type Config struct {
 	// Presets and LLM configure the openai Translator.
 	Presets *Presets
 	LLM     TranslatorOptions
+	// ASROptions configure the real ASR adapters.
+	ASROptions ASROptions
 }
 
 // SelectTTS builds the TTS Provider named by TTS_PROVIDER.
@@ -178,8 +180,9 @@ func SelectTTS(name string) (core.TTS, error) {
 
 // Select builds the three Providers or fails loudly on an unsupported name.
 func Select(config Config) (core.ASR, core.Translator, core.TTS, error) {
-	if config.ASR != "mock" {
-		return nil, nil, nil, fmt.Errorf("ASR_PROVIDER %q is not supported by this build; use mock", config.ASR)
+	asr, err := SelectASR(config.ASR, config.ASROptions, config.Sample)
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	var translator core.Translator
 	switch config.Translator {
@@ -201,5 +204,5 @@ func Select(config Config) (core.ASR, core.Translator, core.TTS, error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	return NewMockASR(config.Sample), translator, tts, nil
+	return asr, translator, tts, nil
 }
