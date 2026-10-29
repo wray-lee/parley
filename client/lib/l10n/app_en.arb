@@ -1,0 +1,135 @@
+{
+  "@@locale": "en",
+  "modeListen": "Listen",
+  "modeConverse": "Converse",
+  "startPairListen": "They speak {source} → I read {target}",
+  "@startPairListen": {
+    "placeholders": {
+      "source": {
+        "type": "String"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "startPairConverse": "Me {me} ⇄ Them {them}",
+  "@startPairConverse": {
+    "placeholders": {
+      "me": {
+        "type": "String"
+      },
+      "them": {
+        "type": "String"
+      }
+    }
+  },
+  "swapLanguages": "Swap languages",
+  "oneWayPair": "One-way pair — Listen only.",
+  "listenOnlyPairReason": "This Language Pair translates one way only, so Converse is unavailable. Start Listen instead.",
+  "domainPacks": "Domain Packs",
+  "noDomainPacks": "No Domain Packs for this direction.",
+  "providersTitle": "Providers",
+  "providerDemo": "Demo (mock Providers)",
+  "presetTrainsOnData": "{preset}: its free tier may train on your prompts.",
+  "@presetTrainsOnData": {
+    "placeholders": {
+      "preset": {
+        "type": "String"
+      }
+    }
+  },
+  "startListen": "Start Listen",
+  "startConverse": "Start Converse",
+  "stop": "Stop",
+  "converseNotInBuild": "The face-to-face Converse screen is not in this build yet; use Listen.",
+  "captionsEmpty": "Captions land here.",
+  "connecting": "Connecting to the server…",
+  "connected": "Connected",
+  "listening": "Listening",
+  "stopped": "Stopped",
+  "connectionFailed": "Connection failed",
+  "retry": "Retry",
+  "demoBanner": "DEMO — sample audio, mock providers",
+  "demoUseMyKeys": "Use my keys",
+  "demoMicOff": "Microphone off in Demo Mode: the mock ASR only plays bundled samples.",
+  "demoMicOffShort": "Mic off in Demo",
+  "demoSamples": "Demo samples",
+  "sampleMissing": "No bundled sample matches this direction.",
+  "settings": "Settings",
+  "settingsClose": "Close",
+  "settingsSave": "Save",
+  "settingsSaved": "Saved.",
+  "settingsSaveFailed": "Fix the highlighted fields.",
+  "settingsSaveRestartsHost": "Saving restarts the local host.",
+  "settingsSpeech": "Speech recognition",
+  "settingsTranslation": "Translation",
+  "settingsVoice": "Voice",
+  "settingsPreset": "Preset",
+  "settingsBaseUrl": "Base URL",
+  "settingsModel": "Model",
+  "settingsExtraBody": "Extra request fields (JSON)",
+  "settingsAdvanced": "Advanced",
+  "settingsApiKey": "API key",
+  "settingsRegion": "Region",
+  "settingsKokoroUrl": "Kokoro URL",
+  "settingsKeySaved": "Saved — {mask}",
+  "@settingsKeySaved": {
+    "placeholders": {
+      "mask": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsKeyMissing": "No key saved",
+  "settingsKeyChange": "Change",
+  "settingsMockNoKey": "Mock needs no key.",
+  "settingsWebReadOnly": "These Providers are configured on the server. This browser never sees keys, and there is no server-URL field.",
+  "settingsWebProviders": "Server Providers",
+  "settingsWebPreset": "Translation Preset",
+  "settingsWebVoice": "Voice",
+  "settingsWebSpeech": "Speech recognition",
+  "settingsServerDefault": "Server default",
+  "settingsVoiceSystem": "System voice",
+  "settingsWebNoKeys": "Keys stay on the server.",
+  "settingsLastError": "Last session: {message}",
+  "@settingsLastError": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "providerMock": "Mock",
+  "providerSystem": "System",
+  "providerAzure": "Azure",
+  "providerKokoro": "Kokoro",
+  "providerDeepgram": "Deepgram",
+  "providerParaformer": "Paraformer",
+  "errorNeedsBaseUrl": "The custom Preset needs a Base URL.",
+  "errorInvalidUrl": "Base URL must be a full http:// or https:// URL.",
+  "errorNotHttp": "Base URL must start with http:// or https://.",
+  "errorPlainHttp": "Plain http is allowed only for localhost or a private LAN IPv4 address; use https:// for other hosts.",
+  "errorCredentials": "Base URL must not include credentials.",
+  "errorQuery": "Base URL must not include a query or fragment.",
+  "errorNeedsModel": "The custom Preset needs a Model.",
+  "errorInvalidJson": "Extra request fields must be valid JSON.",
+  "errorNotObject": "Extra request fields must be a JSON object.",
+  "languageEnglish": "English",
+  "languageChinese": "中文",
+  "languageJapanese": "日本語",
+  "settingsKeyClear": "Clear",
+  "settingsPresetCustom": "Custom (Base URL + Model)",
+  "exitFocusMode": "Exit focus mode",
+  "focusMode": "Focus mode",
+  "jumpToLive": "Jump to live",
+  "finishing": "finishing…",
+  "stillListening": "still listening…",
+  "skip": "Skip",
+  "takingLonger": "taking longer than usual",
+  "pauseCaptions": "Pause captions",
+  "resumeCaptions": "Resume captions",
+  "more": "More",
+  "captionSize": "Caption size",
+  "audioUnavailable": "Audio unavailable — subtitles only"
+}

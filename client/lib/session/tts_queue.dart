@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../audio/tts_player_api.dart';
@@ -22,13 +23,27 @@ class TtsQueue {
   Future<void> _chain = Future<void>.value();
   int _next = 1;
   int? _active;
+  _Cancel? _cancel;
 
   /// Forgets all queued audio so a new Session's seg_id order starts at 1.
+  /// The cancelled clip's end is not reported: it belongs to the old Session.
   void reset() {
     _clips.clear();
     _silent.clear();
     _active = null;
     _next = 1;
+    _cancelPlayback(reportEnd: false);
+  }
+
+  /// Stops playback, reporting the in-flight clip's end so Gating releases,
+  /// then drops everything queued.
+  Future<void> stop() async {
+    _clips.clear();
+    _silent.clear();
+    _active = null;
+    _next = 1;
+    _cancelPlayback(reportEnd: true);
+    await _safePlayerStop();
   }
 
   void begin(int segId, String format) {
@@ -67,22 +82,53 @@ class TtsQueue {
       _clips.remove(_next);
       final segId = _next;
       _next++;
+      final cancel = _Cancel();
+      _cancel = cancel;
       _onPlayback(segId, 'start');
       try {
         // One source per chunk: independently encoded chunks must not be
         // concatenated into one buffer (spike S1 F1 truncates the tail).
         for (final data in clip.chunks) {
-          await _player.play(clip.format, data);
+          final playing = _player.play(clip.format, data);
+          // A player that lost the route or was interrupted may never settle;
+          // stop/reset must still release the queue.
+          await Future.any([playing, cancel.done.future]);
+          if (cancel.done.isCompleted) break;
         }
       } catch (error) {
         _onError(error);
       } finally {
-        _onPlayback(segId, 'end');
+        if (identical(_cancel, cancel)) _cancel = null;
+        if (!cancel.done.isCompleted || cancel.reportEnd) {
+          _onPlayback(segId, 'end');
+        }
       }
+      if (cancel.done.isCompleted) return;
     }
   }
 
-  Future<void> dispose() => _player.dispose();
+  void _cancelPlayback({required bool reportEnd}) {
+    final cancel = _cancel;
+    _cancel = null;
+    if (cancel != null && !cancel.done.isCompleted) {
+      cancel.reportEnd = reportEnd;
+      cancel.done.complete();
+    }
+    unawaited(_safePlayerStop());
+  }
+
+  Future<void> _safePlayerStop() async {
+    try {
+      await _player.stop();
+    } catch (_) {
+      // A player that cannot stop must not keep the queue alive.
+    }
+  }
+
+  Future<void> dispose() async {
+    await stop();
+    await _player.dispose();
+  }
 }
 
 class _Clip {
@@ -91,4 +137,11 @@ class _Clip {
   final String format;
   final List<Uint8List> chunks = [];
   bool complete = false;
+}
+
+class _Cancel {
+  final Completer<void> done = Completer<void>();
+
+  /// True for a Session stop (report playback end), false for a reset.
+  bool reportEnd = true;
 }

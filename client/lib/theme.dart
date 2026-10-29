@@ -55,8 +55,31 @@ class ParleyColors {
     error: Color(0xFFBA1A1A),
   );
 
-  static ParleyColors of(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? dark : light;
+  static ParleyColors of(BuildContext context) {
+    final colors = Theme.of(context).brightness == Brightness.dark
+        ? dark
+        : light;
+    // The OS high-contrast setting switches muted and provisional to ink.
+    return MediaQuery.highContrastOf(context) ? colors.highContrast : colors;
+  }
+
+  /// High contrast: muted and provisional text collapse to ink (SYNTHESIS §1.3).
+  ParleyColors get highContrast => ParleyColors(
+    bg: bg,
+    surface: surface,
+    control: control,
+    ink: ink,
+    muted: ink,
+    provisional: ink,
+    outline: outline,
+    hairline: hairline,
+    live: live,
+    onLive: onLive,
+    liveText: liveText,
+    demoForeground: demoForeground,
+    demoBackground: demoBackground,
+    error: error,
+  );
 
   final Color bg;
   final Color surface;

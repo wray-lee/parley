@@ -11,6 +11,7 @@
     { "value": "https://gateway.example.com/v1?key=1", "preset": "custom", "error": "query" },
     { "value": "https://gateway.example.com/v1#", "preset": "custom", "error": "query" },
     { "value": "http://localhost:11434/v1", "preset": "custom", "expect": "http://localhost:11434/v1" },
+    { "value": "http://LOCALHOST:11434/v1", "preset": "custom", "expect": "http://LOCALHOST:11434/v1" },
     { "value": "http://192.168.1.10:11434/v1", "preset": "custom", "expect": "http://192.168.1.10:11434/v1" },
     { "value": "http://172.31.5.4:1234/v1", "preset": "custom", "expect": "http://172.31.5.4:1234/v1" },
     { "value": "http://172.32.5.4:1234/v1", "preset": "custom", "error": "plainHttp" },

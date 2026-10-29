@@ -4,14 +4,23 @@ import 'app_config.dart';
 import 'audio/audio_capture.dart';
 import 'audio/tts_player.dart';
 import 'session/listen_session.dart';
+import 'settings/presets.dart';
+import 'settings/secret_store.dart';
+import 'settings/settings_controller.dart';
 import 'transport/web_socket_transport.dart';
 import 'ui/parley_app.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final config = AppConfig.fromEnvironment();
+  final settings = SettingsController(
+    store: createSecretStore(),
+    presets: await PresetCatalog.load(),
+  );
+  await settings.load();
   runApp(
     ParleyApp(
+      settings: settings,
       createSession: () => ListenSession(
         transport: WebSocketTransport(config.wsUri),
         audio: createAudioCapture(),

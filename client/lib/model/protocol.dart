@@ -36,6 +36,67 @@ class LanguagePair {
   final bool converse;
 
   String get label => '$a ↔ $b';
+
+  /// The Direction that starts at [src] and ends at [tgt], or null.
+  DirectionRef? direction(String src, String tgt) {
+    for (final direction in directions) {
+      if (direction.src == src && direction.tgt == tgt) return direction;
+    }
+    return null;
+  }
+
+  /// The Direction opposite to [direction], or null for a one-way pair.
+  DirectionRef? reverseOf(DirectionRef direction) =>
+      this.direction(direction.tgt, direction.src);
+}
+
+/// One Domain Pack the server offers for a Direction (`hello.packs`).
+class PackRef {
+  const PackRef({required this.name, required this.src, required this.tgt});
+
+  factory PackRef.fromJson(Map<String, dynamic> json) => PackRef(
+    name: json['name'] as String,
+    src: json['src'] as String,
+    tgt: json['tgt'] as String,
+  );
+
+  final String name;
+  final String src;
+  final String tgt;
+
+  bool matches(DirectionRef direction) =>
+      src == direction.src && tgt == direction.tgt;
+}
+
+/// One bundled Demo sample from `/samples/manifest.json`.
+class SampleRef {
+  const SampleRef({required this.id, required this.src, required this.tgt});
+
+  factory SampleRef.fromJson(Map<String, dynamic> json) => SampleRef(
+    id: json['id'] as String,
+    src: json['src'] as String,
+    tgt: json['tgt'] as String,
+  );
+
+  final String id;
+  final String src;
+  final String tgt;
+
+  bool matches(DirectionRef direction) =>
+      src == direction.src && tgt == direction.tgt;
+}
+
+/// One Preset the running Session uses (`hello.presetsInUse`).
+class PresetRef {
+  const PresetRef({required this.id, required this.trainsOnData});
+
+  factory PresetRef.fromJson(Map<String, dynamic> json) => PresetRef(
+    id: json['id'] as String,
+    trainsOnData: json['trainsOnData'] == true,
+  );
+
+  final String id;
+  final bool trainsOnData;
 }
 
 /// One committed Segment: the source line and its translation, never revised.
@@ -45,12 +106,36 @@ class Segment {
     required this.source,
     required this.translation,
     required this.demo,
+    this.latencyMs = 0,
+    this.direction,
   });
 
   final int segId;
   final String source;
   final String translation;
   final bool demo;
+
+  /// Speech end → Commit, shown only under Advanced.
+  final int latencyMs;
+
+  /// The Direction the Segment was translated along. Its languages set each
+  /// line's `TextStyle.locale` so Han glyphs keep their regional forms.
+  final DirectionRef? direction;
+}
+
+/// The display-only ASR hypothesis under the committed Segments. The prefix
+/// agreed with the previous hypothesis is shown upright, the rest greyed; the
+/// whole line is hidden from screen readers and never translated.
+class LiveCaption {
+  const LiveCaption({this.stable = '', this.provisional = ''});
+
+  static const empty = LiveCaption();
+
+  final String stable;
+  final String provisional;
+
+  String get text => '$stable$provisional';
+  bool get isEmpty => text.isEmpty;
 }
 
 /// The bundled Demo clip the Server Host advertises at `/samples/placeholder.json`.
