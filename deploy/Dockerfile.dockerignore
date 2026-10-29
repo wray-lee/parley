@@ -1,11 +1,13 @@
-# Keep node_modules, .git, tmp/ and .scratch/ out of the build context.
+# Keep node_modules, .git, tmp/, .scratch/, client/ and spikes/ out of the
+# build context. The Go binary embeds exactly the directories listed below.
 *
-!package.json
-!bun.lock
-!core
+!go.mod
+!go.sum
+!embed.go
+!cmd
+!internal
 !config
-!hosts
-!web
-!prompts
 !packs
+!prompts
 !samples
+!web

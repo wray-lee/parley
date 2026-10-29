@@ -1,26 +1,18 @@
-# Server Host image: Bun runtime, no build step (ADR-0001).
-FROM oven/bun:1.4.3 AS deps
+# Server Host image: one static Go binary on distroless (ADR-0003). The binary
+# embeds config/, packs/, prompts/, samples/ and the vanilla web client, so the
+# runtime image is just the binary and CA certificates.
+FROM golang:1.26.5-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/parley-server ./cmd/parley-server
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
 WORKDIR /app
-# Only production deps: the `ws` WebSocket library.
-COPY package.json bun.lock ./
-RUN bun install --production --frozen-lockfile
-
-FROM oven/bun:1.4.3-alpine
-
-WORKDIR /app
-ENV NODE_ENV=production PORT=3000
-
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json ./
-
-COPY core ./core
-COPY config ./config
-COPY hosts ./hosts
-COPY web ./web
-COPY prompts ./prompts
-COPY packs ./packs
-COPY samples ./samples
-
-USER bun
+ENV PORT=3000
+COPY --from=build /out/parley-server /app/parley-server
+USER nonroot:nonroot
 EXPOSE 3000
-CMD ["bun", "hosts/node/server.js"]
+ENTRYPOINT ["/app/parley-server"]

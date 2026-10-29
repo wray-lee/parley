@@ -1,4 +1,4 @@
-# Parley Server Host: the Bun app behind Caddy.
+# Parley Server Host: the Go app behind Caddy.
 #
 #   docker compose -f deploy/compose.yaml up -d --build
 #
@@ -20,7 +20,8 @@ services:
       - "3000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      # Distroless has no shell or Bun; the server binary probes itself.
+      test: ["CMD", "/app/parley-server", "-healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 6

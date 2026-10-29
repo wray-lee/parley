@@ -51,7 +51,7 @@ APK 和 IPA 只是同一 Web 客户端的薄壳。编排核心既可在 **Server
 ```mermaid
 flowchart LR
   B[Phone browser] -->|HTTPS + WSS| C[Caddy]
-  C --> S[Bun Server Host<br/>Session core + Providers]
+  C --> S[Go Server Host<br/>Session core + Providers]
   A[Parley app<br/>Tauri shell: same web client<br/>Device Host core] -->|direct HTTPS / WSS| P[Cloud ASR, LLM and TTS]
   A -.->|optional: connect to my server| C
   S --> L[OpenAI-compatible LLM]
@@ -60,7 +60,7 @@ flowchart LR
 ```
 
 - **一个核心，两种宿主**（[ADR-0001](docs/adr/0001-one-js-core-two-hosts.md)）。`core/` 是纯 JavaScript ES 模块：没有构建步骤、没有 DOM、不使用 Node 内置模块或 Bun 专属 API（唯一例外是仅在服务端使用的 Edge TTS 适配器，App 不会加载它）。传输层按运行环境各有一个适配器。
-- **Server Host：** Bun ≥ 1.4、静态 Web 客户端、WebSocket 协议桥，由 Caddy 提供 HTTPS。它是自托管模型栈（WhisperLiveKit、Ollama、Kokoro）的唯一运行环境。
+- **Server Host：** 一个静态 Go 二进制（`cmd/parley-server`，distroless 镜像）、静态 Web 客户端、WebSocket 协议桥，由 Caddy 提供 HTTPS。它是自托管模型栈（WhisperLiveKit、Ollama、Kokoro）的唯一运行环境。
 - **Device Host：** 在 App 内运行同一核心，直接调用 Provider（提供商），把 Key 保存在操作系统钥匙串中，并默认使用系统 TTS。
 - **Server Host 的浏览器客户端**是协议客户端；它从不运行核心，也永远不会看到服务端 Key。
 - **Converse** 采用带显式 Turn 的门控半双工（[ADR-0002](docs/adr/0002-gated-half-duplex-converse.md)）。
@@ -81,12 +81,11 @@ docker compose -f deploy/compose.yaml up -d --build
 
 打开 `https://localhost/`（接受内部 CA 警告），或在手机上打开 `https://<server-ip>/`。按 **Start**：内置的 zh→ja 样例会走完 ASR、翻译和 TTS，DEMO 横幅始终可见。`/healthz` 返回 `{"ok":true}`。
 
-裸机（Bun ≥ 1.4）：
+裸机（Go 1.26）：
 
 ```sh
-bun install --production --frozen-lockfile
-bun run start      # or: bun hosts/node/server.js
-                   # http://localhost:3000 — no TLS, so the microphone is unavailable
+CGO_ENABLED=0 go build -o parley-server ./cmd/parley-server
+./parley-server    # http://localhost:3000 — no TLS, so the microphone is unavailable
 ```
 
 演示模式使用内置样例，因此没有麦克风也能工作。只有在通过 HTTPS 使用真实 ASR Provider 时才按 **Mic**。
@@ -249,7 +248,7 @@ docker compose -f deploy/compose.yaml -f deploy/compose.local.yaml --profile loc
 
 - **域名：** 在 `.env` 中设置 `PUBLIC_DOMAIN=parley.example.com`，并用 `--env-file .env` 启动；Caddy 会获取并续期 Let's Encrypt 证书。80 和 443 端口必须可达。
 
-- **用隧道代替 CA：** 在回环地址上运行 Bun 服务端，并使用 `tailscale serve --bg 3000`，或 `cloudflared tunnel --url http://127.0.0.1:3000`。两者都使用受公网信任的证书终止 TLS。
+- **用隧道代替 CA：** 在回环地址上运行 Go 服务端，并使用 `tailscale serve --bg 3000`，或 `cloudflared tunnel --url http://127.0.0.1:3000`。两者都使用受公网信任的证书终止 TLS。
 
 完整部署细节、裸机反向代理和注意事项见 [`deploy/README.md`](deploy/README.md)。
 

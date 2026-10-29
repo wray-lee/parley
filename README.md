@@ -51,7 +51,7 @@ A language is added by dropping a prompt file into `prompts/`. A domain glossary
 ```mermaid
 flowchart LR
   B[Phone browser] -->|HTTPS + WSS| C[Caddy]
-  C --> S[Bun Server Host<br/>Session core + Providers]
+  C --> S[Go Server Host<br/>Session core + Providers]
   A[Parley app<br/>Tauri shell: same web client<br/>Device Host core] -->|direct HTTPS / WSS| P[Cloud ASR, LLM and TTS]
   A -.->|optional: connect to my server| C
   S --> L[OpenAI-compatible LLM]
@@ -60,7 +60,7 @@ flowchart LR
 ```
 
 - **One core, two hosts** ([ADR-0001](docs/adr/0001-one-js-core-two-hosts.md)). `core/` is plain JavaScript ES modules: no build step, no DOM, no Node built-ins or Bun-only APIs (the one exception is the server-only Edge TTS adapter, which the app never loads). Platform transport lives in one adapter per environment.
-- **Server Host:** Bun ≥ 1.4, static web client, WebSocket protocol bridge, Caddy for HTTPS. It is the only home for the self-hosted model stack (WhisperLiveKit, Ollama, Kokoro).
+- **Server Host:** one static Go binary (`cmd/parley-server`, distroless image), static web client, WebSocket protocol bridge, Caddy for HTTPS. It is the only home for the self-hosted model stack (WhisperLiveKit, Ollama, Kokoro).
 - **Device Host:** runs the same core inside the app, calls Providers directly, keeps keys in the OS keystore and defaults to the OS TTS.
 - **Browser client of a Server Host** is a protocol client; it never runs the core and never sees server keys.
 - **Converse** is gated half-duplex with explicit Turns ([ADR-0002](docs/adr/0002-gated-half-duplex-converse.md)).
@@ -81,12 +81,11 @@ docker compose -f deploy/compose.yaml up -d --build
 
 Open `https://localhost/` (accept the internal-CA warning) or `https://<server-ip>/` from a phone. Press **Start**: the bundled zh→ja sample plays through ASR, translation and TTS, and the DEMO banner stays visible. `/healthz` answers `{"ok":true}`.
 
-Bare metal (Bun ≥ 1.4):
+Bare metal (Go 1.26):
 
 ```sh
-bun install --production --frozen-lockfile
-bun run start      # or: bun hosts/node/server.js
-                   # http://localhost:3000 — no TLS, so the microphone is unavailable
+CGO_ENABLED=0 go build -o parley-server ./cmd/parley-server
+./parley-server    # http://localhost:3000 — no TLS, so the microphone is unavailable
 ```
 
 Demo Mode uses the bundled sample, so it works without a microphone. Press **Mic** only with a real ASR Provider over HTTPS.
@@ -249,7 +248,7 @@ Microphones require a secure context. The Compose setup always serves HTTPS thro
 
 - **Domain:** set `PUBLIC_DOMAIN=parley.example.com` in `.env` and start with `--env-file .env`; Caddy obtains and renews a Let's Encrypt certificate. Ports 80 and 443 must be reachable.
 
-- **Tunnels instead of a CA:** run the Bun host on loopback and use `tailscale serve --bg 3000`, or `cloudflared tunnel --url http://127.0.0.1:3000`. Both terminate TLS with a publicly trusted certificate.
+- **Tunnels instead of a CA:** run the Go Server Host on loopback and use `tailscale serve --bg 3000`, or `cloudflared tunnel --url http://127.0.0.1:3000`. Both terminate TLS with a publicly trusted certificate.
 
 Full deployment details, bare-metal proxying and caveats are in [`deploy/README.md`](deploy/README.md).
 

@@ -172,6 +172,9 @@ type Config struct {
 	Translator string
 	TTS        string
 	Sample     Sample
+	// Samples, when set, lets the Demo Mode switch bundled samples per
+	// Session (the Server Host selects one on `sample {name}`).
+	Samples *SampleBook
 	// Presets and LLM configure the openai Translator.
 	Presets *Presets
 	LLM     TranslatorOptions
@@ -184,14 +187,24 @@ type Config struct {
 
 // Select builds the three Providers or fails loudly on an unsupported name.
 func Select(config Config) (core.ASR, core.Translator, core.TTS, error) {
-	asr, err := SelectASR(config.ASR, config.ASROptions, config.Sample)
-	if err != nil {
-		return nil, nil, nil, err
+	var asr core.ASR
+	var err error
+	if config.ASR == "mock" && config.Samples != nil {
+		asr = NewSampleASR(config.Samples)
+	} else {
+		asr, err = SelectASR(config.ASR, config.ASROptions, config.Sample)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	var translator core.Translator
 	switch config.Translator {
 	case "mock":
-		translator = NewMockTranslator(config.Sample.ReferenceTranslations)
+		if config.Samples != nil {
+			translator = NewSampleTranslator(config.Samples)
+		} else {
+			translator = NewMockTranslator(config.Sample.ReferenceTranslations)
+		}
 	case "openai":
 		if config.Presets == nil {
 			return nil, nil, nil, fmt.Errorf("translator openai needs config/presets.json")

@@ -22,12 +22,16 @@ import (
 
 func startServer(t *testing.T, values map[string]string) (*host.Server, int, *logSink) {
 	t.Helper()
+	return startServerWith(t, values, host.Options{})
+}
+
+func startServerWith(t *testing.T, values map[string]string, options host.Options) (*host.Server, int, *logSink) {
+	t.Helper()
 	values["PORT"] = "0"
 	sink := &logSink{records: make(chan protocol.SegmentLog, 16)}
-	server, err := host.New(host.LoadConfig(env(values)), parley.Assets, host.Options{
-		SegmentLog: sink.log,
-		Warn:       sink.warn,
-	})
+	options.SegmentLog = sink.log
+	options.Warn = sink.warn
+	server, err := host.New(host.LoadConfig(env(values)), parley.Assets, options)
 	if err != nil {
 		t.Fatalf("host.New: %v", err)
 	}
@@ -160,6 +164,51 @@ func TestAccessTokenRejectsHandshake(t *testing.T) {
 	if hello.Type != "hello" {
 		t.Fatalf("hello = %+v", hello)
 	}
+}
+
+// The Device Host's Loopback Host sets RejectOrigin: a request from a browser
+// page must not reach the core, while a native client without Origin does.
+func TestRejectOriginBlocksRequestsCarryingOne(t *testing.T) {
+	_, port, _ := startServerWith(t, map[string]string{}, host.Options{RejectOrigin: true})
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+
+	request, err := http.NewRequest(http.MethodGet, base+"/healthz", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Origin", "https://evil.example")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("healthz with Origin = %d, want 403", response.StatusCode)
+	}
+
+	if response, body := get(t, base+"/healthz"); response.StatusCode != 200 || body != `{"ok":true}` {
+		t.Fatalf("healthz without Origin = %d %q", response.StatusCode, body)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	url := fmt.Sprintf("ws://127.0.0.1:%d/ws", port)
+	conn, response, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": []string{"https://evil.example"}},
+	})
+	if conn != nil {
+		conn.CloseNow()
+	}
+	if err == nil || response == nil || response.StatusCode != http.StatusForbidden {
+		t.Fatalf("websocket with Origin: err=%v response=%v", err, response)
+	}
+	response.Body.Close()
+
+	conn, _, err = websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatalf("websocket without Origin: %v", err)
+	}
+	conn.CloseNow()
 }
 
 func TestDemoSessionOverWebSocket(t *testing.T) {
@@ -425,6 +474,127 @@ func TestUnsupportedProviderIsAnExplicitStartupError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "ASR_PROVIDER") || !strings.Contains(err.Error(), "mock") {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+func TestUnknownSampleIsAProtocolError(t *testing.T) {
+	_, port, _ := startServer(t, map[string]string{})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/ws", port), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	var hello protocol.Hello
+	readJSON(t, ctx, conn, &hello)
+	writeJSON(t, ctx, conn, protocol.ClientMessage{Type: "start", Mode: "listen", Src: "zh", Tgt: "ja"})
+	writeJSON(t, ctx, conn, protocol.ClientMessage{Type: "sample", Name: "nope"})
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		messageType, data, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if messageType != websocket.MessageText {
+			continue
+		}
+		var event struct {
+			Type    string `json:"type"`
+			Kind    string `json:"kind"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal(data, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Type != "error" {
+			continue
+		}
+		if event.Kind != "protocol" || !strings.Contains(event.Message, `unknown sample "nope"`) {
+			t.Fatalf("error = %+v", event)
+		}
+		return
+	}
+	t.Fatal("no protocol error for an unknown sample")
+}
+
+func TestSampleSelectionDoesNotLeakBetweenSessions(t *testing.T) {
+	_, port, _ := startServer(t, map[string]string{})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	dial := func() *websocket.Conn {
+		t.Helper()
+		conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/ws", port), nil)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		var hello protocol.Hello
+		readJSON(t, ctx, conn, &hello)
+		return conn
+	}
+
+	first := dial()
+	defer first.CloseNow()
+	writeJSON(t, ctx, first, protocol.ClientMessage{Type: "start", Mode: "listen", Src: "ja", Tgt: "zh"})
+	writeJSON(t, ctx, first, protocol.ClientMessage{Type: "sample", Name: "ja-held"})
+	for i := 0; i < 140; i++ {
+		writePCM(t, ctx, first, 6000)
+	}
+	for i := 0; i < 60; i++ {
+		writePCM(t, ctx, first, 0)
+	}
+	// A committed Segment proves the first Session applied its own sample.
+	if segment := readSegment(t, ctx, first); !strings.Contains(segment.Src, "この報告書は") {
+		t.Fatalf("first session segment = %+v", segment)
+	}
+
+	second := dial()
+	defer second.CloseNow()
+	writeJSON(t, ctx, second, protocol.ClientMessage{Type: "start", Mode: "listen", Src: "zh", Tgt: "ja"})
+	// The v0.0.3 path: no name, so this Session keeps its own sample.
+	writeJSON(t, ctx, second, protocol.ClientMessage{Type: "sample"})
+	for i := 0; i < 80; i++ {
+		writePCM(t, ctx, second, 6000)
+	}
+	for i := 0; i < 25; i++ {
+		writePCM(t, ctx, second, 0)
+	}
+	segment := readSegment(t, ctx, second)
+	if segment.Src != "你好，这是演示。" || segment.Tgt != "[DEMO] こんにちは、これはデモです。" {
+		t.Fatalf("second session segment = %+v (the first session's sample leaked)", segment)
+	}
+}
+
+func readSegment(t *testing.T, ctx context.Context, conn *websocket.Conn) *protocol.SegmentEvent {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		messageType, data, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if messageType != websocket.MessageText {
+			continue
+		}
+		var event struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(data, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Type != "segment" {
+			continue
+		}
+		var segment protocol.SegmentEvent
+		if err := json.Unmarshal(data, &segment); err != nil {
+			t.Fatal(err)
+		}
+		return &segment
+	}
+	t.Fatal("no segment")
+	return nil
 }
 
 func readJSON(t *testing.T, ctx context.Context, conn *websocket.Conn, value any) {

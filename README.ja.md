@@ -51,7 +51,7 @@ APK と IPA は同じ Web クライアントを包む薄いシェルです。オ
 ```mermaid
 flowchart LR
   B[Phone browser] -->|HTTPS + WSS| C[Caddy]
-  C --> S[Bun Server Host<br/>Session core + Providers]
+  C --> S[Go Server Host<br/>Session core + Providers]
   A[Parley app<br/>Tauri shell: same web client<br/>Device Host core] -->|direct HTTPS / WSS| P[Cloud ASR, LLM and TTS]
   A -.->|optional: connect to my server| C
   S --> L[OpenAI-compatible LLM]
@@ -60,7 +60,7 @@ flowchart LR
 ```
 
 - **1 つのコア、2 つのホスト**（[ADR-0001](docs/adr/0001-one-js-core-two-hosts.md)）。`core/` は素の JavaScript ES モジュールです。ビルドステップなし、DOM なし、Node 組み込みモジュールや Bun 専用 API なし（唯一の例外はサーバー専用の Edge TTS アダプターで、アプリでは読み込まれません）。プラットフォーム固有のトランスポートは環境ごとに 1 つのアダプターに収められています。
-- **Server Host:** Bun ≥ 1.4、静的 Web クライアント、WebSocket プロトコルブリッジ、HTTPS 用 Caddy。セルフホストのモデルスタック（WhisperLiveKit、Ollama、Kokoro）を置ける唯一の場所です。
+- **Server Host:** 単一の静的 Go バイナリ（`cmd/parley-server`、distroless イメージ）、静的 Web クライアント、WebSocket プロトコルブリッジ、HTTPS 用 Caddy。セルフホストのモデルスタック（WhisperLiveKit、Ollama、Kokoro）を置ける唯一の場所です。
 - **Device Host:** アプリ内で同じコアを実行し、Provider を直接呼び出し、キーを OS のキーストアに保持し、既定で OS の TTS を使用します。
 - **Server Host のブラウザクライアント**はプロトコルクライアントであり、コアを実行せず、サーバーのキーを見ることもありません。
 - **Converse** は明示的な Turn を伴うゲート付き半二重です（[ADR-0002](docs/adr/0002-gated-half-duplex-converse.md)）。
@@ -81,12 +81,11 @@ docker compose -f deploy/compose.yaml up -d --build
 
 `https://localhost/` を開く（内部 CA の警告を承認する）か、スマートフォンから `https://<server-ip>/` を開きます。**Start** を押すと、同梱の zh→ja サンプルが ASR、翻訳、TTS を通して再生され、DEMO バナーが表示され続けます。`/healthz` は `{"ok":true}` を返します。
 
-ベアメタル（Bun ≥ 1.4）:
+ベアメタル（Go 1.26）:
 
 ```sh
-bun install --production --frozen-lockfile
-bun run start      # or: bun hosts/node/server.js
-                   # http://localhost:3000 — no TLS, so the microphone is unavailable
+CGO_ENABLED=0 go build -o parley-server ./cmd/parley-server
+./parley-server    # http://localhost:3000 — no TLS, so the microphone is unavailable
 ```
 
 Demo Mode は同梱サンプルを使うため、マイクなしでも動作します。**Mic** は、HTTPS 経由で実際の ASR Provider を使用する場合にのみ押してください。
@@ -249,7 +248,7 @@ docker compose -f deploy/compose.yaml -f deploy/compose.local.yaml --profile loc
 
 - **ドメインあり:** `.env` に `PUBLIC_DOMAIN=parley.example.com` を設定し、`--env-file .env` を付けて起動します。Caddy が Let's Encrypt 証明書を取得して更新します。ポート 80 と 443 が到達可能である必要があります。
 
-- **CA の代わりにトンネル:** Bun ホストをループバックで実行し、`tailscale serve --bg 3000` または `cloudflared tunnel --url http://127.0.0.1:3000` を使用します。どちらも公的に信頼された証明書で TLS を終端します。
+- **CA の代わりにトンネル:** Go ホストをループバックで実行し、`tailscale serve --bg 3000` または `cloudflared tunnel --url http://127.0.0.1:3000` を使用します。どちらも公的に信頼された証明書で TLS を終端します。
 
 デプロイの詳細、ベアメタルでのプロキシ、注意事項は [`deploy/README.md`](deploy/README.md) にあります。
 

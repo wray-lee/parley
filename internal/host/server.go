@@ -27,6 +27,10 @@ import (
 type Options struct {
 	SegmentLog func(protocol.SegmentLog)
 	Warn       func(string)
+	// RejectOrigin makes every request that carries an Origin header fail, as
+	// the Device Host's Loopback Host must (ADR-0003). The Server Host leaves
+	// it false because browsers connect with an Origin.
+	RejectOrigin bool
 }
 
 // Server is the Server Host.
@@ -37,17 +41,19 @@ type Server struct {
 	pairConfig        map[string]core.PairConfig
 	forcedInstruction string
 	sample            providers.Sample
+	samples           *providers.SampleBook
 	presets           *providers.Presets
 	voices            providers.Voices
 	segmentLog        func(protocol.SegmentLog)
 	warn              func(string)
+	rejectOrigin      bool
 	httpServer        *http.Server
 	listener          net.Listener
 }
 
 // New loads and validates the product assets and the Provider selection.
 func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
-	server := &Server{cfg: cfg, assets: assets, segmentLog: options.SegmentLog, warn: options.Warn}
+	server := &Server{cfg: cfg, assets: assets, segmentLog: options.SegmentLog, warn: options.Warn, rejectOrigin: options.RejectOrigin}
 	if server.segmentLog == nil {
 		server.segmentLog = func(protocol.SegmentLog) {}
 	}
@@ -78,6 +84,11 @@ func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
 		server.forcedInstruction = strings.TrimSpace(string(data))
 	}
 
+	sampleBook, err := providers.LoadSampleBook(assets)
+	if err != nil {
+		return nil, err
+	}
+	server.samples = sampleBook
 	sample, err := providers.LoadSample(assets, "placeholder")
 	if err != nil {
 		return nil, err
@@ -99,7 +110,7 @@ func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
 	// Like the JavaScript host, validate the ASR/TTS names at startup but
 	// build the translator per connection: bad LLM_* config is then a
 	// connection error event, not a crash before /healthz answers.
-	providerConfig := server.providerConfig()
+	providerConfig := server.providerConfig(server.samples)
 	if _, err := providers.SelectASR(server.cfg.ASRProvider, providerConfig.ASROptions, server.sample); err != nil {
 		return nil, err
 	}
@@ -109,12 +120,13 @@ func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
 	return server, nil
 }
 
-// providerConfig is the Provider selection for every new Session; startup
-// validation reuses its ASR options.
-func (s *Server) providerConfig() providers.Config {
+// providerConfig is the Provider selection for a new Session; startup
+// validation reuses its ASR options. samples is that Session's own copy of
+// the SampleBook, so `sample {name}` never reaches another connection.
+func (s *Server) providerConfig(samples *providers.SampleBook) providers.Config {
 	return providers.Config{
 		ASR: s.cfg.ASRProvider, Translator: s.cfg.TranslatorProvider, TTS: s.cfg.TTSProvider,
-		Sample: s.sample, Presets: s.presets,
+		Sample: s.sample, Samples: samples, Presets: s.presets,
 		ASROptions: providers.ASROptions{
 			WhisperLiveKitURL: s.cfg.ASROptions.WhisperLiveKitURL,
 			DeepgramAPIKey:    s.cfg.ASROptions.DeepgramAPIKey,
@@ -167,6 +179,10 @@ func (s *Server) Close() error {
 
 // ServeHTTP routes /healthz, /ws and the embedded static client.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.rejectOrigin && r.Header.Get("Origin") != "" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -260,7 +276,10 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
-	conn, err := websocket.Accept(w, r, nil)
+	// The Bun oracle accepts every browser Origin: ACCESS_TOKEN is the guard
+	// and tunnels/CDNs may rewrite Host, so the same-origin default would break
+	// deploys. The Loopback Host rejects every Origin above (ADR-0003).
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
 	if err != nil {
 		return
 	}
@@ -293,7 +312,8 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	asr, translator, tts, err := providers.Select(s.providerConfig())
+	samples := s.samples.Session()
+	asr, translator, tts, err := providers.Select(s.providerConfig(samples))
 	if err != nil {
 		emit(&protocol.ErrorEvent{Type: "error", Kind: "protocol", Message: "could not start the Session: " + err.Error()})
 		_ = conn.Close(websocket.StatusInternalError, "session start failed")
@@ -350,7 +370,16 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 						emit(&protocol.ErrorEvent{Type: "error", Kind: "protocol", Message: "invalid JSON message"})
 					}
 				} else {
-					job = func() { session.HandleMessage(message) }
+					job = func() {
+						if message.Type == "sample" && !samples.Select(message.Name) {
+							emit(&protocol.ErrorEvent{
+								Type:    "error",
+								Kind:    "protocol",
+								Message: fmt.Sprintf("unknown sample %q", message.Name),
+							})
+						}
+						session.HandleMessage(message)
+					}
 				}
 			}
 			select {

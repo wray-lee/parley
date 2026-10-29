@@ -1,8 +1,9 @@
 # Server Host deployment
 
-The Bun Server Host serves the web client and proxies to no external service
-in Demo Mode. Caddy terminates HTTPS: an internal CA by default, Let's Encrypt
-when `PUBLIC_DOMAIN` is set.
+The Server Host is one static Go binary (`cmd/parley-server`) on a distroless
+image. It serves the web client, `/healthz` and `/samples`, and proxies to no
+external service in Demo Mode. Caddy terminates HTTPS: an internal CA by
+default, Let's Encrypt when `PUBLIC_DOMAIN` is set.
 
 ## Docker quick start
 
@@ -67,24 +68,28 @@ terminate TLS with a tunnel and leave `PUBLIC_DOMAIN` empty:
   (quick tunnel) or a named tunnel to the same origin. Cloudflare terminates
   TLS with a publicly trusted certificate.
 
-Both alternatives assume the Bun host is reachable on `127.0.0.1:3000`; they
+Both alternatives assume the Server Host is reachable on `127.0.0.1:3000`; they
 replace the Caddy service rather than running in front of it. This paragraph is
 the input for ticket 19.
 
 ## Bare metal (no Docker)
 
-The same app and the same environment variables; Bun ≥ 1.4 runtime and
-dependencies:
+The same environment variables and one static binary:
 
 ```sh
-bun install --production --frozen-lockfile
-bun run start      # or: bun hosts/node/server.js
+CGO_ENABLED=0 go build -o parley-server ./cmd/parley-server
+./parley-server
 ```
 
 It listens on `PORT` (default 3000) on all interfaces. Put Caddy, nginx or a
 tunnel in front for HTTPS; keep `ACCESS_TOKEN` set if the port is reachable by
 anyone else. To use Caddy directly with the same certificates, reuse
 `deploy/Caddyfile` and change `app:3000` to `127.0.0.1:3000`.
+
+The Docker image is a two-stage build: `golang:1.26.5-alpine` compiles the
+binary with `CGO_ENABLED=0`, and `gcr.io/distroless/static-debian12:nonroot`
+runs it with no shell. The compose healthcheck therefore calls the binary
+itself: `/app/parley-server -healthcheck` probes `/healthz` on `PORT`.
 
 ## Access Token
 
