@@ -18,6 +18,8 @@ func (a *failingASR) AcceptsLive() bool       { return true }
 func (a *failingASR) Revisable() bool         { return false }
 func (a *failingASR) Open(protocol.Direction) {}
 func (a *failingASR) Close()                  {}
+func (a *failingASR) NewStream() core.ASR     { return &failingASR{} }
+func (a *failingASR) Discard()                {}
 func (a *failingASR) Push([]int16, int64) ([]core.ASREvent, error) {
 	if a.pushed {
 		return nil, nil

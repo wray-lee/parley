@@ -98,6 +98,18 @@ func NewParaformerASR(options ParaformerOptions) *paraformerASR {
 func (a *paraformerASR) Name() string      { return "paraformer" }
 func (a *paraformerASR) AcceptsLive() bool { return true }
 func (a *paraformerASR) Revisable() bool   { return false }
+func (a *paraformerASR) NewStream() core.ASR {
+	return NewParaformerASR(a.opts)
+}
+func (a *paraformerASR) Discard() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.resetAgreementLocked()
+	a.events = nil
+	a.pendingAudio = nil
+	// failure is kept: an error queued but not yet surfaced must still reach
+	// the next Push (external failures never vanish).
+}
 
 func (a *paraformerASR) Open(direction protocol.Direction) {
 	ctx, mine := a.begin()

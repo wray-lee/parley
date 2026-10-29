@@ -1235,3 +1235,32 @@ test('Listen glossary Session Trace pins the glossary translator messages', asyn
   assert.equal(translator.requests[0].user, '[已译上下文]\n[新段落]\none');
   checkTrace(trace);
 });
+
+test('Listen echo Session Trace is the frozen oracle', async () => {
+  const asr = scriptedAsr(
+    [
+      { at: 20, events: [{ type: 'stable', text: 'one' }] },
+      { at: 400, events: [{ type: 'stable', text: 'translated-one' }] }, // own voice
+      { at: 900, events: [{ type: 'stable', text: 'translated-one' }] }, // after the tail
+    ],
+    { acceptsLive: true },
+  );
+  const translator = scriptedTranslator(['translated-one', 'translated-one']);
+  const tts = scriptedTts({ name: 'system' });
+  const { session, clock, events, records, trace } = build({ asr, translator, tts, trace: 'listen-echo' });
+  session.handleMessage({ type: 'start', mode: 'listen', src: 'zh', tgt: 'ja' });
+
+  await speechThenSilence(session, clock, 18); // first question -> spoken "translated-one"
+  await speechThenSilence(session, clock, 18); // the mic hears the app's own words
+  session.handleMessage({ type: 'playback', seg_id: 1, state: 'end' });
+  clock.advance(501); // past the echo tail
+  await speechThenSilence(session, clock, 18); // a real repeat is no longer a suspect
+
+  assert.deepEqual(
+    events.filter((event) => event.type === 'segment').map((event) => event.src),
+    ['one', 'translated-one'],
+    'the Echo Suspect never becomes a Segment, the post-tail repeat does',
+  );
+  assert.equal(records[1].echo_suspect, 1, 'the suspect is logged on the next Commit');
+  checkTrace(trace);
+});

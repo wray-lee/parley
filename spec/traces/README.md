@@ -14,7 +14,7 @@ line. Line order is significant. Three record types exist:
 
 | `type` | Shape |
 |---|---|
-| `meta` | `{type, format, name, clockStart, registry, pairConfig, forcedInstruction, providers}` — exactly one, first line |
+| `meta` | `{type, format, name, oracle?, clockStart, registry, pairConfig, forcedInstruction, providers}` — exactly one, first line |
 | `input` | `{type, kind, ...}` — everything the core receives |
 | `output` | `{type, kind, ...}` — everything the core emits |
 
@@ -26,6 +26,11 @@ Provider errors and stay replayable. Binary data (TTS audio) is encoded as
 `meta.registry` is the resolved registry (`directions`, `packs`, `pairs`), not
 file names, so a replay needs no filesystem. `meta.providers` carries only the
 names and flags a replay needs to reconstruct the fake Providers.
+
+`meta.oracle` is `"js"` when absent and `"go"` for traces that record behaviour
+v0.1 deliberately adds and the frozen JavaScript oracle cannot produce (see
+`spec/DIVERGENCES.md`). A `go` trace is recorded from the Go core and replayed
+against it; it is a regression golden, not a parity oracle.
 
 ## Inputs
 
@@ -77,9 +82,13 @@ is why the clock and the flush points are recorded.
 
 ## Recording
 
-`bun run traces:record` runs the trace tests in record mode and rewrites these
-files. Run it only when a JS bug fix intentionally changes behaviour; never
-hand-edit a trace. Review the resulting diff.
+`bun run traces:record` runs the JavaScript trace tests in record mode and
+rewrites the `oracle: js` files. Run it only when a JS bug fix intentionally
+changes behaviour; never hand-edit a trace. Review the resulting diff.
+
+`PARLEY_RECORD_TRACES=1 go test ./internal/trace -run TestRecord` does the same
+for the `oracle: go` traces; without the variable those tests compare the live
+run byte for byte with the committed file.
 
 Current traces:
 
@@ -90,6 +99,22 @@ Current traces:
   v0.0.3 gate that v0.1 removes (see `spec/DIVERGENCES.md`).
 - `converse-turns.jsonl` — Converse start, Turn `me` speech, Turn switch to
   `them`, subtitle-only Segment, Gating playback end plus tail.
+- `converse-auto-switch.jsonl` — my spoken output ends; the Turn switches to
+  `them` automatically and their Segment is subtitle-only.
+- `converse-estimate.jsonl` — no playback report; the watchdog ends my spoken
+  output at audio duration + 1.5 s, the Turn switches, and the 500 ms tail
+  follows.
+- `converse-system-gating.jsonl` (`oracle: go`) — system TTS is Gated in
+  Converse: frames are withheld during playback and the 500 ms tail, the
+  watchdog releases at `estimateSpeechMs(text) + 1.5 s`, and a client `cancel`
+  or `error` also ends the Gate.
+- `listen-echo.jsonl` — Listen with system TTS: mic frames keep flowing while it
+  plays; the app's own words are dropped as an Echo Suspect and the same text
+  commits after the tail.
+- `listen-never-gates.jsonl` (`oracle: go`) — Listen with audio TTS: every
+  microphone frame reaches ASR during playback, an own-voice phrase is dropped
+  as an Echo Suspect while a real phrase commits, and a post-tail repeat is no
+  longer a suspect.
 - `listen-cuts.jsonl` — one Listen Session exercising silence, accumulated
   duration, clause length and PTT-release Cuts.
 - `listen-hold-merge.jsonl` — ⏸ holds a Segment; two later Cuts merge into it

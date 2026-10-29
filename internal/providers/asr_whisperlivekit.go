@@ -80,6 +80,23 @@ func NewWhisperLiveKitASR(options WhisperLiveKitOptions) *whisperLiveKitASR {
 func (a *whisperLiveKitASR) Name() string      { return "whisperlivekit" }
 func (a *whisperLiveKitASR) AcceptsLive() bool { return true }
 func (a *whisperLiveKitASR) Revisable() bool   { return false }
+func (a *whisperLiveKitASR) NewStream() core.ASR {
+	return NewWhisperLiveKitASR(a.opts)
+}
+func (a *whisperLiveKitASR) Discard() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.pending = nil
+	a.lastAudioMS = 0
+	a.lastPartial = ""
+	a.lastLineEndMS = 0
+	a.latestLines = nil
+	a.committed = nil
+	a.events = nil
+	a.pendingAudio = nil
+	// failure is kept: an error queued but not yet surfaced must still reach
+	// the next Push (external failures never vanish).
+}
 
 func (a *whisperLiveKitASR) Open(direction protocol.Direction) {
 	ctx, mine := a.begin()

@@ -395,3 +395,51 @@ test('Converse Session Trace is the frozen oracle', async () => {
   );
   checkTrace(trace);
 });
+
+test('Converse auto-switch Session Trace is the frozen oracle', async () => {
+  const asr = scriptedStreams([
+    [{ at: 20, text: 'question' }],
+    [{ at: 20, text: 'answer' }],
+  ]);
+  const translator = scriptedTranslator(['translated-question', 'translated-answer']);
+  const { session, clock, events, trace } = build({ asr, translator, trace: 'converse-auto-switch' });
+  startConverse(session);
+
+  await speakAndCut(session, clock);
+  session.handleMessage({ type: 'playback', seg_id: 1, state: 'end' });
+  clock.advance(500); // the gating tail
+  await speakAndCut(session, clock);
+
+  assert.deepEqual(
+    events.filter((event) => event.type === 'turn').map((event) => [event.who, event.auto]),
+    [['me', false], ['them', true]],
+    'my spoken output ending switches the Turn to them',
+  );
+  assert.deepEqual(
+    events.filter((event) => event.type === 'segment').map((event) => [event.speak, event.direction.src]),
+    [[true, 'zh'], [false, 'ja']],
+  );
+  checkTrace(trace);
+});
+
+test('Converse estimated-playback Session Trace is the frozen oracle', async () => {
+  const asr = scriptedStreams([
+    [{ at: 20, text: 'question' }],
+    [{ at: 20, text: 'answer' }],
+  ]);
+  const translator = scriptedTranslator(['translated-question', 'translated-answer']);
+  const tts = createMockTts({ durationMs: 100 });
+  const { session, clock, events, trace } = build({ asr, translator, tts, trace: 'converse-estimate' });
+  startConverse(session);
+
+  await speakAndCut(session, clock);
+  clock.advance(1600); // 100 ms audio + 1.5 s estimate, no playback report
+
+  assert.ok(
+    events.some((event) => event.type === 'turn' && event.who === 'them' && event.auto === true),
+    'the estimate finishes my spoken output and switches the Turn',
+  );
+  await feedLive(session, clock, { silenceFrames: 25 }); // the 500 ms tail
+  await speakAndCut(session, clock);
+  checkTrace(trace);
+});

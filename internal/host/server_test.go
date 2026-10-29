@@ -177,6 +177,9 @@ func TestDemoSessionOverWebSocket(t *testing.T) {
 	if !hello.Demo || len(hello.Pairs) != 1 || len(hello.Packs) != 2 || hello.PresetsInUse == nil {
 		t.Fatalf("hello = %+v", hello)
 	}
+	if hello.Protocol != 1 {
+		t.Fatalf("hello.protocol = %d, want 1", hello.Protocol)
+	}
 	if hello.TTS != "audio" {
 		t.Fatalf("hello.tts = %q, want audio for the mock TTS", hello.TTS)
 	}
@@ -257,6 +260,9 @@ func TestHelloDeclaresSystemTTSForTheSystemProvider(t *testing.T) {
 
 	var hello protocol.Hello
 	readJSON(t, ctx, conn, &hello)
+	if hello.Protocol != 1 {
+		t.Fatalf("hello.protocol = %d, want 1", hello.Protocol)
+	}
 	if hello.TTS != "system" {
 		t.Fatalf("hello.tts = %q, want system", hello.TTS)
 	}

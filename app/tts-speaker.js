@@ -1,7 +1,8 @@
 // The Device Host speaks `segment {speak:true}` itself because the core's
-// system TTS Provider is text-only. The third-party TTS plugin's speech:start
-// and speech:finish events close the gate; a duration estimate is the timeout
-// backstop when a platform never emits them. Web Speech is the fallback, and
+// system TTS Provider is text-only. The third-party TTS plugin's speech:finish
+// resolves the playback (the Device Host then reports `playback end`; core-owned
+// Gating is a v0.1 Go-core behaviour); a duration estimate is the timeout
+// backstop when a platform never emits it. Web Speech is the fallback, and
 // subtitles-only is the last resort (the Device Host shows a notice).
 
 // shortcut: a duration estimate is the timeout backstop when a platform never

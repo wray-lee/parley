@@ -96,6 +96,18 @@ func NewDeepgramASR(options DeepgramOptions) *deepgramASR {
 func (a *deepgramASR) Name() string      { return "deepgram" }
 func (a *deepgramASR) AcceptsLive() bool { return true }
 func (a *deepgramASR) Revisable() bool   { return false }
+func (a *deepgramASR) NewStream() core.ASR {
+	return NewDeepgramASR(a.opts)
+}
+func (a *deepgramASR) Discard() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.resetAgreementLocked()
+	a.events = nil
+	a.pendingAudio = nil
+	// failure is kept: an error queued but not yet surfaced must still reach
+	// the next Push (external failures never vanish).
+}
 
 func (a *deepgramASR) Open(direction protocol.Direction) {
 	ctx, mine := a.begin()

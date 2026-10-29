@@ -21,8 +21,8 @@ All Tauri API use is confined to three thin adapters:
   send (100–250 ms window). Fetch has a 35 s hard deadline, and Stop aborts
   every in-flight stream; chunks that arrive after an abort are dropped.
 - `keystore.js` — `tauri-plugin-secure-keystore` (0.0.3-beta.1).
-- `tts-speaker.js` — `tauri-plugin-tts` (0.2.1), whose `speech:start` /
-  `speech:finish` events drive the Converse microphone gate.
+- `tts-speaker.js` — `tauri-plugin-tts` (0.2.1). The Device Host turns its
+  `speech:start` / `speech:finish` events into `playback` start/end reports.
 
 ## Layout
 
@@ -33,7 +33,6 @@ All Tauri API use is confined to three thin adapters:
   JSON, keys, server mode).
 - `keystore.js` — secure-keystore adapter with the memory fallback.
 - `tts-speaker.js` — system-TTS plugin adapter with the Web Speech fallback.
-- `speech-gate.js` — app-side mic gate for system TTS in Converse.
 - `server-socket.js` — WebSocket redirect for "connect to my server".
 - `vendor/` — vendored plugin ES modules and their licenses (see
   `vendor/README.md`).
@@ -88,8 +87,10 @@ keeps the dialog open with a specific error. `localhost` needs no grant.
   is why the Device Host uses header auth rather than the browser's `token`
   subprotocol.
 - System TTS is text-only in the core. The Device Host speaks each Segment with
-  the TTS plugin and, in Converse, drops microphone frames while it speaks plus
-  a 500 ms tail. Stop cancels speech, aborts streams and resets the gate.
+  the TTS plugin and reports playback start and end; it does not gate. Core-owned
+  Gating (Converse frames withheld during playback plus a 500 ms tail) belongs to
+  the v0.1 Go core, while this legacy host runs the JS oracle, which leaves
+  system TTS ungated. Stop cancels speech and aborts streams.
 - The server Access Token is stored in the keystore and appended as `?token=`
   when connecting. Server-side enforcement is still pending in this build.
 
@@ -122,7 +123,7 @@ keeps the dialog open with a specific error. `localhost` needs no grant.
 `bun test app/` (also picked up by the root `bun run test`) covers the adapter
 seams without a phone: fetch timeout/abort/late-chunk handling, WebSocket header
 auth and PCM batching, keystore fallback, TTS event matching and Web Speech
-fallback, the Converse gate, settings storage (no secrets), and the server-mode
+fallback, playback reporting, settings storage (no secrets), and the server-mode
 URL rewrite. `app/device-host.test.mjs` additionally assembles a temporary
 frontend, boots the Device Host with the bundled sample, and asserts a
 DEMO-labelled Segment plus the Segment log. It writes outside the source tree
@@ -211,10 +212,11 @@ been run. They are the acceptance procedure for tickets 16 and 17.
    is gone, a live Deepgram Partial appears, a Segment from Groq appears, and
    the phone speaks the translation with the system voice. `adb logcat | grep
    -i tauri` shows no HTTP/WebSocket permission denial.
-5. Converse gating: switch Mode to **Converse**, press **Start**, and speak as
-   `me`. While the system voice speaks, the microphone frames are dropped; the
-   next Segment starts only after speech ends plus the 500 ms tail. Turn
-   switching still works and no Segment transcribes the spoken translation.
+5. Converse playback reports: switch Mode to **Converse**, press **Start**, and
+   speak as `me`. The Device Host sends `playback start` and `playback end` for
+   each spoken Segment (`adb logcat` shows the frames) and Turn switching works.
+   Core-owned Gating is not part of this legacy host: it ships in the v0.1 Go
+   core, and the JS oracle leaves system TTS ungated.
 6. Failure paths: clear the Groq key and Save; the DEMO banner returns. Enter a
    wrong Deepgram key and press Mic; an `auth` error toast names Deepgram and
    suggests checking the key.

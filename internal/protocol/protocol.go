@@ -171,6 +171,9 @@ type Hello struct {
 	Packs        []PackRef `json:"packs"`
 	PresetsInUse []Preset  `json:"presetsInUse"`
 	Demo         bool      `json:"demo"`
+	// Protocol is the additive v0.1 field: 1 names the core-owned Gating
+	// protocol. Every other byte stays as v0.0.3 sent it.
+	Protocol int `json:"protocol"`
 	// TTS is the additive v0.1 field: "system" when the client must speak
 	// Segment text with OS TTS, "audio" when the host streams chunks.
 	TTS string `json:"tts"`

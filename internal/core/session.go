@@ -38,16 +38,38 @@ type ASREvent struct {
 	EndMS   int64
 }
 
-// ASR is the Provider seam for speech recognition.
+// playback is one spoken Segment waiting for its client playback report.
+type playback struct {
+	text       string
+	durationMS int64
+	// gates mirrors the oracle's entry.gates: Listen system TTS is unarmed and
+	// ignores playback start.
+	gates    bool
+	timer    Timer
+	timerGen int
+}
+
+// ASR is the Provider seam for speech recognition. Converse opens one
+// independent stream per Direction at start through NewStream.
 type ASR interface {
 	Name() string
 	AcceptsLive() bool
 	// Revisable reports that the Provider emits only revisable hypotheses, so
 	// the Session derives the Stable Prefix by agreement.
 	Revisable() bool
+	// Open starts a new recognition connection; a result the previous
+	// connection had not surfaced must never be delivered afterwards.
 	Open(direction protocol.Direction)
 	Push(pcm []int16, audioMS int64) ([]ASREvent, error)
 	Close()
+	// NewStream returns an independent, unopened stream with the same Provider
+	// configuration.
+	NewStream() ASR
+	// Discard drops hypotheses and audio buffered since the last Push and
+	// forgets per-utterance agreement state, but keeps a Provider failure not
+	// yet surfaced. Converse calls it on the outgoing stream when the Turn
+	// changes and reopens the incoming one.
+	Discard()
 }
 
 // Translator is the Provider seam for translation. Translate emits one chunk
@@ -121,6 +143,17 @@ type Session struct {
 	contexts         map[string][]ContextPair
 	mockMicErrorSent bool
 
+	// Converse opens one ASR stream per Direction at start and routes audio to
+	// the current Turn's stream.
+	streams map[string]ASR
+	gating  *Gating
+	echo    *EchoFilter
+	// playbacks tracks spoken Segments from Segment emission until the client
+	// reports the playback ended (or the watchdog releases it).
+	playbacks        map[int]*playback
+	ownSpeechPending int
+	echoSuspects     int
+
 	cut           *CutPolicy
 	cutWait       Timer
 	drain         Timer
@@ -147,6 +180,9 @@ func NewSession(cfg SessionConfig) *Session {
 		revisable:  cfg.Providers.ASR.Revisable(),
 		contexts:   make(map[string][]ContextPair),
 		hold:       NewHoldPolicy(cfg.ForcedInstruction),
+		gating:     &Gating{},
+		echo:       NewEchoFilter(),
+		playbacks:  make(map[int]*playback),
 	}
 }
 
@@ -189,6 +225,7 @@ func (s *Session) Hello() protocol.Hello {
 		Packs:        make([]protocol.PackRef, 0, len(s.registry.Packs)),
 		PresetsInUse: []protocol.Preset{},
 		Demo:         s.demo(),
+		Protocol:     1,
 		TTS:          "audio",
 	}
 	if s.tts.Name() == "system" {
@@ -229,7 +266,7 @@ func (s *Session) HandleMessage(message protocol.ClientMessage) {
 		s.input = "sample"
 		s.audioMS = 0
 		s.resetAgreement()
-		s.asr.Open(directionRef(s.direction))
+		s.currentStream().Open(directionRef(s.direction))
 	case "input":
 		if message.Source == "sample" {
 			s.input = "sample"
@@ -237,9 +274,9 @@ func (s *Session) HandleMessage(message protocol.ClientMessage) {
 			s.input = "live"
 		}
 	case "turn":
-		s.setTurn(message.Who)
+		s.setTurn(message.Who, false)
 	case "playback":
-		// Playback gating arrives with the Gating parity ticket.
+		s.handlePlayback(message)
 	case "ptt":
 		s.ptt = message.State == "down"
 		if s.ptt {
@@ -251,7 +288,8 @@ func (s *Session) HandleMessage(message protocol.ClientMessage) {
 		s.running = false
 		s.clearHoldTimer()
 		s.hold.Reset()
-		s.asr.Close()
+		s.resetPlayback()
+		s.closeStreams()
 		s.drainAfterClose()
 	}
 }
@@ -312,10 +350,12 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 	s.segID = 0
 	s.mockMicErrorSent = false
 	s.contexts = make(map[string][]ContextPair)
+	s.echoSuspects = 0
 	s.clearHoldTimer()
 	s.hold.Reset()
+	s.resetPlayback()
+	s.openStreams(direction, directions)
 	s.cut = NewCutPolicy(s.pairConfig[direction.Src+"->"+direction.Tgt])
-	s.asr.Open(directionRef(direction))
 	s.emit(&protocol.StateEvent{Type: "state", State: "listening"})
 	if mode == "converse" {
 		s.emit(&protocol.TurnEvent{Type: "turn", Who: "me"})
@@ -324,13 +364,25 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 
 // setTurn switches the audio Direction in Converse. A Held Segment never
 // merges into another Turn's Direction, so it is forced now.
-func (s *Session) setTurn(who string) {
+func (s *Session) setTurn(who string, auto bool) {
 	if !s.converse() || s.directions[who] == nil || s.turn == who {
 		return
+	}
+	// A late final buffered by the outgoing stream belongs to the ended Turn;
+	// the oracle drops it by reopening the stream.
+	if outgoing := s.streams[directionKey(s.direction)]; outgoing != nil {
+		outgoing.Discard()
 	}
 	s.closeSegment(s.cfg.Clock.Now(), true)
 	s.turn = who
 	s.direction = s.directions[who]
+	// Reopen the incoming stream like the oracle's asr.open. Clearing its
+	// buffer once is not enough: a final the old socket delivers after this
+	// point would otherwise be returned by the new Turn's first Push. The
+	// reopen makes the adapter's generation guard drop that read.
+	if incoming := s.streams[directionKey(s.direction)]; incoming != nil {
+		incoming.Open(directionRef(s.direction))
+	}
 	s.audioMS = 0
 	s.resetAgreement()
 	s.cut = NewCutPolicy(s.pairConfig[s.direction.Src+"->"+s.direction.Tgt])
@@ -340,13 +392,222 @@ func (s *Session) setTurn(who string) {
 			return nil
 		})
 	}
-	s.asr.Open(directionRef(s.direction))
-	s.emit(&protocol.TurnEvent{Type: "turn", Who: who})
+	s.emit(&protocol.TurnEvent{Type: "turn", Who: who, Auto: auto})
+}
+
+// maybeAutoSwitch hands the Turn to them once my spoken output has finished.
+func (s *Session) maybeAutoSwitch() {
+	if !s.converse() || s.turn != "me" || s.ownSpeechPending > 0 {
+		return
+	}
+	s.setTurn("them", true)
+}
+
+// openStreams opens one ASR stream per Direction for Converse; Listen uses the
+// single Provider stream.
+func (s *Session) openStreams(direction *Direction, directions map[string]*Direction) {
+	if s.streams != nil {
+		for _, stream := range s.streams {
+			stream.Close()
+		}
+	}
+	s.streams = nil
+	if directions != nil {
+		s.streams = make(map[string]ASR)
+		me, them := directions["me"], directions["them"]
+		s.streams[directionKey(me)] = s.asr
+		s.streams[directionKey(them)] = s.asr.NewStream()
+		s.streams[directionKey(me)].Open(directionRef(me))
+		s.streams[directionKey(them)].Open(directionRef(them))
+		return
+	}
+	s.asr.Open(directionRef(direction))
+}
+
+func (s *Session) closeStreams() {
+	if s.streams != nil {
+		// Keep the map: drainAfterClose still polls the current Turn's stream,
+		// whose closing final arrives on a later Push.
+		for _, stream := range s.streams {
+			stream.Close()
+		}
+		return
+	}
+	s.asr.Close()
+}
+
+// currentStream is the ASR stream that receives the current Turn's audio.
+func (s *Session) currentStream() ASR {
+	if s.direction != nil {
+		if stream := s.streams[directionKey(s.direction)]; stream != nil {
+			return stream
+		}
+	}
+	return s.asr
+}
+
+func directionKey(direction *Direction) string {
+	return direction.Src + "\x00" + direction.Tgt
+}
+
+func (s *Session) handlePlayback(message protocol.ClientMessage) {
+	entry := s.playbacks[message.SegID]
+	if entry == nil {
+		return
+	}
+	switch message.State {
+	case "start":
+		if entry.gates {
+			s.armPlaybackEstimate(message.SegID, entry)
+		}
+	case "end", "cancel", "error":
+		s.endPlayback(message.SegID)
+	}
+}
+
+// beginOwnSpeech starts the echo entry and, when the playback can outlive its
+// report, the watchdog for a spoken Segment.
+func (s *Session) beginOwnSpeech(segID int, text string, audio *protocol.Audio) {
+	s.echo.Remember(segID, text)
+	s.ownSpeechPending++
+	entry := &playback{text: text}
+	if audio != nil {
+		entry.durationMS = audioDurationMS(audio)
+	}
+	s.playbacks[segID] = entry
+	// The oracle arms the estimate for audio TTS in both modes; Converse also
+	// arms it for system TTS because the v0.1 core owns that Gate.
+	entry.gates = s.converse() || s.tts.Name() != "system"
+	if entry.gates {
+		s.armPlaybackEstimate(segID, entry)
+	}
+}
+
+func (s *Session) armPlaybackEstimate(segID int, entry *playback) {
+	if entry.timer != nil {
+		entry.timer.Stop()
+	}
+	estimate := entry.durationMS
+	if estimate <= 0 {
+		estimate = EstimateSpeechMS(entry.text)
+	}
+	entry.timerGen++
+	generation := entry.timerGen
+	entry.timer = s.cfg.Clock.AfterFunc(estimate+1500, func() {
+		// The production clock posts a fired callback onto the session loop
+		// even after Stop, so a stale callback must not end a later arm or a
+		// Segment that reuses the same seg_id after a restart.
+		if entry.timerGen != generation || s.playbacks[segID] != entry {
+			return
+		}
+		entry.timer = nil
+		s.endPlayback(segID)
+	})
+}
+
+func (s *Session) endPlayback(segID int) {
+	entry := s.playbacks[segID]
+	if entry == nil {
+		return
+	}
+	delete(s.playbacks, segID)
+	if entry.timer != nil {
+		entry.timer.Stop()
+		entry.timer = nil
+	}
+	now := s.cfg.Clock.Now()
+	s.echo.End(segID, now)
+	if s.converse() && !s.hasGatingPlayback() {
+		s.gating.End(now)
+	}
+	if s.ownSpeechPending > 0 {
+		s.ownSpeechPending--
+	}
+	s.maybeAutoSwitch()
+}
+
+func (s *Session) hasGatingPlayback() bool { return len(s.playbacks) > 0 }
+
+// gatingBlocked reports whether Converse must withhold a live mic frame.
+func (s *Session) gatingBlocked() bool {
+	if !s.converse() {
+		return false
+	}
+	return s.gating.Blocked(s.cfg.Clock.Now()) || s.hasGatingPlayback()
+}
+
+func (s *Session) resetPlayback() {
+	for _, entry := range s.playbacks {
+		if entry.timer != nil {
+			entry.timer.Stop()
+		}
+	}
+	s.playbacks = make(map[int]*playback)
+	s.ownSpeechPending = 0
+	s.gating.Reset()
+	s.echo.Reset()
+}
+
+// audioDurationMS is the JavaScript oracle's audioDurationMs: WAV byte rate,
+// MP3 first-frame bitrate, otherwise unknown.
+func audioDurationMS(audio *protocol.Audio) int64 {
+	bytes := len(audio.Data)
+	switch audio.Format {
+	case "wav":
+		if bytes >= 44 {
+			byteRate := int64(uint32(audio.Data[28]) | uint32(audio.Data[29])<<8 |
+				uint32(audio.Data[30])<<16 | uint32(audio.Data[31])<<24)
+			if byteRate > 0 {
+				return int64(bytes-44) * 1000 / byteRate
+			}
+		}
+	case "mp3":
+		if kbps := mp3Kbps(audio.Data); kbps > 0 {
+			return int64(bytes) * 8 / int64(kbps)
+		}
+	}
+	return 0
+}
+
+// mp3Kbps reads the first MP3 frame header's bitrate.
+// shortcut: the first frame only; accurate for the CBR mp3 produced by
+// Kokoro/Azure/Edge. Scan every frame when a VBR Provider is added.
+func mp3Kbps(data []byte) int {
+	bitrates := map[int][16]int{
+		1: {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0},
+		2: {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0},
+	}
+	index := 0
+	if len(data) > 10 && data[0] == 0x49 && data[1] == 0x44 && data[2] == 0x33 {
+		index = 10 + ((int(data[6]&0x7f) << 21) | (int(data[7]&0x7f) << 14) |
+			(int(data[8]&0x7f) << 7) | int(data[9]&0x7f))
+	}
+	for ; index+4 <= len(data); index++ {
+		if data[index] != 0xff || data[index+1]&0xe0 != 0xe0 {
+			continue
+		}
+		version := (data[index+1] >> 3) & 3
+		layer := (data[index+1] >> 1) & 3
+		if version == 1 || layer != 1 {
+			continue
+		}
+		table := 2
+		if version == 3 {
+			table = 1
+		}
+		if kbps := bitrates[table][(data[index+2]>>4)&0xf]; kbps > 0 {
+			return kbps
+		}
+	}
+	return 0
 }
 
 // HandleAudio feeds one PCM16 microphone frame.
 func (s *Session) HandleAudio(pcm []int16) {
 	if !s.running || s.direction == nil {
+		return
+	}
+	if s.input == "live" && s.gatingBlocked() {
 		return
 	}
 	if !s.asr.AcceptsLive() && s.input == "live" {
@@ -394,7 +655,7 @@ func (s *Session) HandleAudio(pcm []int16) {
 }
 
 func (s *Session) pushASR(pcm []int16) ([]ASREvent, bool) {
-	events, err := s.asr.Push(pcm, s.audioMS)
+	events, err := s.currentStream().Push(pcm, s.audioMS)
 	if err != nil {
 		// The JavaScript adapters deliver an error event alongside whatever
 		// hypotheses arrived in the same push; the Session keeps running.
@@ -452,6 +713,10 @@ func commonPrefix(a, b string) string {
 
 func (s *Session) addStable(text, glue string) {
 	if text == "" {
+		return
+	}
+	if s.input == "live" && s.echo.IsEcho(text, s.cfg.Clock.Now()) {
+		s.echoSuspects++
 		return
 	}
 	if s.stable == "" {
@@ -628,7 +893,7 @@ func (s *Session) commitSourceOnly(pending *pendingSegment, firstToken *int64, d
 	s.emitLog(protocol.SegmentLog{
 		SegID: segID, Direction: ref, SpeechEnd: pending.speechEnd, ASRFinal: pending.source,
 		ASRFinalAt: &pending.finalizedAt, FirstToken: firstToken,
-		Held: true, Merges: pending.merges, Forced: true, ForcedFail: true, EchoSuspect: 0,
+		Held: true, Merges: pending.merges, Forced: true, ForcedFail: true, EchoSuspect: s.echoSuspects,
 	})
 	s.clearHoldTimer()
 	s.hold.Reset()
@@ -653,11 +918,15 @@ func (s *Session) commitTranslation(pending *pendingSegment, text string, firstT
 	s.hold.Reset()
 
 	var ttsFirstChunk *int64
-	// A system TTS is text-only: the client speaks the Segment itself, so the
-	// host emits no audio events (as in the JavaScript oracle).
-	if speak && s.tts.Name() != "system" {
-		audio, err := s.tts.Synthesize(protocol.TTSRequest{Text: text, SegID: segID, Direction: ref})
-		if err != nil {
+	if speak {
+		// A system TTS is text-only: the client speaks the Segment itself, so
+		// the host emits no audio events (as in the JavaScript oracle). Either
+		// way the client reports that playback's start and end back.
+		if s.tts.Name() == "system" {
+			s.beginOwnSpeech(segID, text, nil)
+		} else if audio, err := s.tts.Synthesize(protocol.TTSRequest{
+			Text: text, SegID: segID, Direction: ref,
+		}); err != nil {
 			s.emitError("tts", err)
 		} else {
 			at := s.cfg.Clock.Now()
@@ -665,13 +934,14 @@ func (s *Session) commitTranslation(pending *pendingSegment, text string, firstT
 			s.emit(&protocol.TTSBeginEvent{Type: "tts_begin", SegID: segID, Format: audio.Format})
 			s.emit(&protocol.TTSChunkEvent{Type: "tts_chunk", SegID: segID, Data: audio.Data})
 			s.emit(&protocol.TTSEndEvent{Type: "tts_end", SegID: segID})
+			s.beginOwnSpeech(segID, text, &audio)
 		}
 	}
 
 	s.emitLog(protocol.SegmentLog{
 		SegID: segID, Direction: ref, SpeechEnd: pending.speechEnd, ASRFinal: pending.source,
 		ASRFinalAt: &pending.finalizedAt, FirstToken: firstToken, TTSFirstChunk: ttsFirstChunk,
-		Held: pending.held, Merges: pending.merges, Forced: pending.forced, ForcedFail: false, EchoSuspect: 0,
+		Held: pending.held, Merges: pending.merges, Forced: pending.forced, ForcedFail: false, EchoSuspect: s.echoSuspects,
 	})
 }
 
@@ -753,5 +1023,6 @@ func (s *Session) Close() {
 	s.cancelCutWait()
 	s.clearHoldTimer()
 	s.hold.Reset()
-	s.asr.Close()
+	s.resetPlayback()
+	s.closeStreams()
 }

@@ -87,6 +87,10 @@ type scriptedASR struct {
 func (a *scriptedASR) Name() string      { return a.name }
 func (a *scriptedASR) AcceptsLive() bool { return a.acceptsLive }
 func (a *scriptedASR) Revisable() bool   { return a.revisable }
+func (a *scriptedASR) NewStream() core.ASR {
+	return &scriptedASR{name: a.name, acceptsLive: a.acceptsLive, revisable: a.revisable, marks: a.marks}
+}
+func (a *scriptedASR) Discard() { a.fired = make([]bool, len(a.marks)) }
 func (a *scriptedASR) Open(protocol.Direction) {
 	a.opened++
 	a.fired = make([]bool, len(a.marks))
@@ -502,13 +506,15 @@ func TestConverseTurnsRouteAudioAndSpeakOnlyMe(t *testing.T) {
 	h.session.Idle()
 
 	h.session.HandleMessage(protocol.ClientMessage{Type: "turn", Who: "them"})
+	h.session.HandleMessage(protocol.ClientMessage{Type: "playback", SegID: 1, State: "end"})
+	h.clock.Advance(500) // the gating tail
 	h.feed(20)
 	h.silence(360)
 	h.session.Idle()
 
 	segments := segmentsOf(h.events)
 	if len(segments) != 2 {
-		t.Fatalf("segments = %+v", h.events)
+		t.Fatalf("segments = %+v", segments)
 	}
 	if !segments[0].Speak || segments[0].Direction.Src != "zh" {
 		t.Fatalf("me segment = %+v", segments[0])

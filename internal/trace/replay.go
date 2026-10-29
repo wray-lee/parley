@@ -19,9 +19,12 @@ import (
 
 // Meta is the first line of a trace.
 type Meta struct {
-	Type              string                     `json:"type"`
-	Format            int                        `json:"format"`
-	Name              string                     `json:"name"`
+	Type   string `json:"type"`
+	Format int    `json:"format"`
+	Name   string `json:"name"`
+	// Oracle is "js" (default, the frozen v0.0.3 core) or "go" for traces that
+	// record behaviour only v0.1 has (see spec/DIVERGENCES.md).
+	Oracle            string                     `json:"oracle,omitempty"`
 	ClockStart        int64                      `json:"clockStart"`
 	Registry          core.Registry              `json:"registry"`
 	PairConfig        map[string]core.PairConfig `json:"pairConfig"`
@@ -134,7 +137,7 @@ func Replay(text string) error {
 
 	session := core.NewSession(core.SessionConfig{
 		Providers: core.Providers{
-			ASR:        &traceASR{name: meta.Providers.ASR.Name, acceptsLive: meta.Providers.ASR.AcceptsLive, revisable: meta.Providers.ASR.Revisable, responses: asrResponses},
+			ASR:        &traceASR{name: meta.Providers.ASR.Name, acceptsLive: meta.Providers.ASR.AcceptsLive, revisable: meta.Providers.ASR.Revisable, queue: &traceASRQueue{responses: asrResponses}},
 			Translator: &traceTranslator{name: meta.Providers.Translator.Name, calls: translatorCalls, push: push},
 			TTS:        &traceTTS{name: meta.Providers.TTS.Name, responses: ttsResponses, push: push},
 		},
@@ -284,12 +287,18 @@ func pcmFrame(ms int64, amplitude float64) []int16 {
 	return pcm
 }
 
+// traceASRQueue is shared by every stream of one Session: only the current
+// Turn is pushed, so the scripted responses stay one ordered list.
+type traceASRQueue struct {
+	responses []traceASRResponse
+	index     int
+}
+
 type traceASR struct {
 	name        string
 	acceptsLive bool
 	revisable   bool
-	responses   []traceASRResponse
-	index       int
+	queue       *traceASRQueue
 }
 
 func (a *traceASR) Name() string            { return a.name }
@@ -297,12 +306,19 @@ func (a *traceASR) AcceptsLive() bool       { return a.acceptsLive }
 func (a *traceASR) Revisable() bool         { return a.revisable }
 func (a *traceASR) Open(protocol.Direction) {}
 func (a *traceASR) Close()                  {}
+func (a *traceASR) NewStream() core.ASR {
+	return &traceASR{name: a.name, acceptsLive: a.acceptsLive, revisable: a.revisable, queue: a.queue}
+}
+
+// Discard keeps the scripted queue: any non-current stream is never pushed, and
+// the trace's asr rows line up with the pushes the core makes.
+func (a *traceASR) Discard() {}
 func (a *traceASR) Push([]int16, int64) ([]core.ASREvent, error) {
-	if a.index >= len(a.responses) {
+	if a.queue.index >= len(a.queue.responses) {
 		return nil, nil
 	}
-	response := a.responses[a.index]
-	a.index++
+	response := a.queue.responses[a.queue.index]
+	a.queue.index++
 	return response.events, response.err
 }
 

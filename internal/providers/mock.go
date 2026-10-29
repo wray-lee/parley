@@ -64,6 +64,15 @@ func (m *MockASR) AcceptsLive() bool { return false }
 func (m *MockASR) Revisable() bool   { return false }
 func (m *MockASR) Close()            {}
 
+// NewStream returns an independent replay of the same transcript.
+func (m *MockASR) NewStream() core.ASR { return &MockASR{transcript: m.transcript} }
+
+// Discard restarts the transcript playback like the oracle's stream reopen.
+func (m *MockASR) Discard() {
+	m.partial = nil
+	m.stable = nil
+}
+
 // Open resets the transcript playback for a new Session or sample replay.
 func (m *MockASR) Open(protocol.Direction) {
 	m.partial = make([]bool, len(m.transcript))

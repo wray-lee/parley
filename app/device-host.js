@@ -19,7 +19,6 @@ import {
   readSettings,
   SECRET_KEYS,
 } from './settings.js';
-import { createSpeechGate } from './speech-gate.js';
 import { loadSystemSpeaker } from './tts-speaker.js';
 
 const { DEFAULT_PRESET, PRESETS } = presetData;
@@ -188,8 +187,6 @@ class DeviceWebSocket {
   #systemTts = false;
   #speakerWarned = false;
   #mode = 'listen';
-  #gate = createSpeechGate();
-  #speechSession = 0;
   #stopped = false;
 
   constructor(url) {
@@ -227,7 +224,6 @@ class DeviceWebSocket {
       this.#session.handleMessage(message);
       return;
     }
-    if (this.#mode === 'converse' && this.#gate.blocked) return;
     this.#session.handleAudio(new Int16Array(data));
   }
 
@@ -275,8 +271,9 @@ class DeviceWebSocket {
   }
 
   // The core treats system TTS as text-only, so the Device Host speaks each
-  // Segment itself and holds the microphone while it plays (Converse only).
-  // shortcut: app-side gate; move it into core when system TTS emits tts_*.
+  // Segment itself and reports playback start/end. It does not gate: core-owned
+  // Gating belongs to the v0.1 Go core, and the legacy JS oracle leaves system
+  // TTS ungated.
   #speak(segment) {
     if (!segment.tgt) return;
     if (!this.#speaker) {
@@ -294,9 +291,9 @@ class DeviceWebSocket {
       });
       return;
     }
-    const gated = this.#mode === 'converse';
-    const session = this.#speechSession;
-    if (gated) this.#gate.begin();
+    // The core owns Gating; the client only reports playback. The start can
+    // arrive before the core's playback entry exists, so it is advisory.
+    this.#session?.handleMessage({ type: 'playback', seg_id: segment.seg_id, state: 'start' });
     this.#speaker
       .speak(segment.tgt, segment.direction?.tgt)
       .catch((error) => {
@@ -305,16 +302,13 @@ class DeviceWebSocket {
         this.#emit({ type: 'error', provider: 'tts', kind: 'protocol', message: error.message });
       })
       .finally(() => {
-        if (gated && session === this.#speechSession) this.#gate.end();
         // Lets the Session end its playback/echo entry at the real finish.
         this.#session?.handleMessage({ type: 'playback', seg_id: segment.seg_id, state: 'end' });
       });
   }
 
   #release() {
-    this.#speechSession += 1;
     this.#abortStreams?.();
-    this.#gate.reset();
     this.#speaker?.stop();
   }
 

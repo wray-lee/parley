@@ -1,0 +1,1 @@
+{"type":"hello","pairs":[{"a":"ja","b":"zh","directions":[{"src":"ja","tgt":"zh"},{"src":"zh","tgt":"ja"}],"converse":true}],"packs":[{"name":"conference","src":"ja","tgt":"zh"},{"name":"conference","src":"zh","tgt":"ja"}],"presetsInUse":[],"demo":true}
