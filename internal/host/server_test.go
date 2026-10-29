@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -241,6 +242,150 @@ func TestDemoSessionOverWebSocket(t *testing.T) {
 	}
 }
 
+func TestHelloReportsTheConfiguredPreset(t *testing.T) {
+	const apiKey = "fake-secret-key-not-real"
+	_, port, _ := startServer(t, map[string]string{
+		"LLM_PRESET": "gemini", "LLM_API_KEY": apiKey, "LLM_MODEL": "fake-model",
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/ws", port), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read hello: %v", err)
+	}
+	var hello protocol.Hello
+	if err := json.Unmarshal(data, &hello); err != nil {
+		t.Fatalf("decode hello: %v", err)
+	}
+	if len(hello.PresetsInUse) != 1 || hello.PresetsInUse[0].ID != "gemini" || !hello.PresetsInUse[0].TrainsOnData {
+		t.Fatalf("presetsInUse = %+v, want [{gemini true}]", hello.PresetsInUse)
+	}
+	if strings.Contains(string(data), apiKey) {
+		t.Fatal("hello must not carry the API key")
+	}
+}
+
+func TestInvalidLLMConfigIsAPerConnectionError(t *testing.T) {
+	// The JavaScript host starts listening and sends this error on the
+	// connection it cannot serve; it does not exit at startup.
+	cases := []struct {
+		name string
+		env  map[string]string
+	}{
+		{"unknown preset", map[string]string{"LLM_PRESET": "not-a-preset", "LLM_API_KEY": "fake-key"}},
+		{"bad base URL", map[string]string{"LLM_PRESET": "custom", "LLM_BASE_URL": "not a url", "LLM_MODEL": "m"}},
+		{"bad extra body", map[string]string{"LLM_PRESET": "custom", "LLM_BASE_URL": "https://gateway.example/v1", "LLM_MODEL": "m", "LLM_EXTRA_BODY": "{not json"}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			_, port, _ := startServer(t, test.env)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/ws", port), nil)
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			defer conn.CloseNow()
+			var event protocol.ErrorEvent
+			readJSON(t, ctx, conn, &event)
+			if event.Type != "error" || event.Kind != "protocol" ||
+				!strings.HasPrefix(event.Message, "could not start the Session: ") {
+				t.Fatalf("event = %+v", event)
+			}
+		})
+	}
+}
+
+func TestOpenAITranslatorOverWebSocket(t *testing.T) {
+	requests := make(chan map[string]any, 4)
+	llm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("request body: %v", err)
+			return
+		}
+		requests <- body
+		w.Header().Set("content-type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"こんにちは\"}}]}\n\ndata: [DONE]\n\n")
+	}))
+	defer llm.Close()
+
+	_, port, _ := startServer(t, map[string]string{
+		"LLM_PRESET": "custom", "LLM_BASE_URL": llm.URL + "/v1", "LLM_MODEL": "test-model",
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, fmt.Sprintf("ws://127.0.0.1:%d/ws", port), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+	var hello protocol.Hello
+	readJSON(t, ctx, conn, &hello)
+
+	writeJSON(t, ctx, conn, protocol.ClientMessage{Type: "start", Mode: "listen", Src: "zh", Tgt: "ja"})
+	writeJSON(t, ctx, conn, protocol.ClientMessage{Type: "sample", Name: "placeholder"})
+	for i := 0; i < 80; i++ {
+		writePCM(t, ctx, conn, 6000)
+	}
+	for i := 0; i < 25; i++ {
+		writePCM(t, ctx, conn, 0)
+	}
+
+	var segment *protocol.SegmentEvent
+	deadline := time.Now().Add(10 * time.Second)
+	for segment == nil && time.Now().Before(deadline) {
+		messageType, data, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if messageType != websocket.MessageText {
+			continue
+		}
+		var event struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(data, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Type != "segment" {
+			continue
+		}
+		var candidate protocol.SegmentEvent
+		if err := json.Unmarshal(data, &candidate); err != nil {
+			t.Fatal(err)
+		}
+		segment = &candidate
+	}
+	if segment == nil || segment.Tgt != "こんにちは" {
+		t.Fatalf("segment = %+v", segment)
+	}
+
+	select {
+	case body := <-requests:
+		if body["model"] != "test-model" || body["stream"] != true {
+			t.Fatalf("request body = %v", body)
+		}
+		messages := body["messages"].([]any)
+		if len(messages) != 2 || messages[0].(map[string]any)["role"] != "system" ||
+			!strings.HasPrefix(messages[1].(map[string]any)["content"].(string), "[已译上下文]") {
+			t.Fatalf("messages = %v", messages)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the translator endpoint was never called")
+	}
+}
+
 func TestUnsetTokenWarnsOnce(t *testing.T) {
 	_, _, sink := startServer(t, map[string]string{})
 	warnings := sink.warningLines()
@@ -250,7 +395,7 @@ func TestUnsetTokenWarnsOnce(t *testing.T) {
 }
 
 func TestUnsupportedProviderIsAnExplicitStartupError(t *testing.T) {
-	_, err := host.New(host.LoadConfig(env(map[string]string{"ASR_PROVIDER": "deepgram"})), parley.Assets, host.Options{})
+	_, err := host.New(host.LoadConfig(env(map[string]string{"ASR_PROVIDER": "no-such-provider"})), parley.Assets, host.Options{})
 	if err == nil || !strings.Contains(err.Error(), "ASR_PROVIDER") || !strings.Contains(err.Error(), "mock") {
 		t.Fatalf("err = %v", err)
 	}

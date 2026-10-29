@@ -1173,3 +1173,30 @@ test('Listen Cut-modes Session Trace is the frozen oracle', async () => {
   );
   checkTrace(trace);
 });
+
+test('Listen glossary Session Trace pins the glossary translator messages', async () => {
+  const glossaryRegistry = createRegistry({
+    promptFiles: [
+      { name: 'system_zh2ja.txt', text: 'SYSTEM {{GLOSSARY}}' },
+      { name: 'system_ja2zh.txt', text: 'SYSTEM {{GLOSSARY}}' },
+    ],
+    packFiles: [
+      { name: 'conference_zh2ja.tsv', text: '人工智能\tAI\n神经网络\tneural network' },
+    ],
+  });
+  const translator = scriptedTranslator(['translated-one']);
+  const { session, clock, events, trace } = build({
+    registry: glossaryRegistry,
+    translator,
+    trace: 'listen-glossary',
+  });
+  session.handleMessage({ type: 'start', mode: 'listen', src: 'zh', tgt: 'ja', packs: ['conference'] });
+  session.handleMessage({ type: 'sample', name: 'placeholder' });
+
+  await speechThenSilence(session, clock, 18);
+
+  assert.equal(events.filter((event) => event.type === 'segment').length, 1);
+  assert.equal(translator.requests[0].system, 'SYSTEM 人工智能 → AI\n神经网络 → neural network');
+  assert.equal(translator.requests[0].user, '[已译上下文]\n[新段落]\none');
+  checkTrace(trace);
+});

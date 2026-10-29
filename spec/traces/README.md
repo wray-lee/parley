@@ -97,3 +97,6 @@ Current traces:
   source commits alone with `speak: false` and no TTS.
 - `listen-rolling-context.jsonl` — ten Commits; the last request carries exactly
   the eight most recent pairs.
+- `listen-glossary.jsonl` — a selected Domain Pack's Glossary replaces
+  `{{GLOSSARY}}` in the Direction system prompt; the exact translator messages
+  reach the trace.

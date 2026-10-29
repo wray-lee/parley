@@ -37,6 +37,7 @@ type Server struct {
 	pairConfig        map[string]core.PairConfig
 	forcedInstruction string
 	sample            providers.Sample
+	presets           *providers.Presets
 	segmentLog        func(protocol.SegmentLog)
 	warn              func(string)
 	httpServer        *http.Server
@@ -82,12 +83,36 @@ func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
 	}
 	server.sample = sample
 
+	presets, err := providers.LoadPresets(assets)
+	if err != nil {
+		return nil, err
+	}
+	server.presets = presets
+
+	// Like the JavaScript host, validate the ASR/TTS names at startup but
+	// build the translator per connection: bad LLM_* config is then a
+	// connection error event, not a crash before /healthz answers.
 	if _, _, _, err := providers.Select(providers.Config{
-		ASR: cfg.ASRProvider, Translator: cfg.TranslatorProvider, TTS: cfg.TTSProvider, Sample: sample,
+		ASR: cfg.ASRProvider, Translator: "mock", TTS: cfg.TTSProvider, Sample: sample,
 	}); err != nil {
 		return nil, err
 	}
 	return server, nil
+}
+
+// providerConfig is the Provider selection for every new Session.
+func (s *Server) providerConfig() providers.Config {
+	return providers.Config{
+		ASR: s.cfg.ASRProvider, Translator: s.cfg.TranslatorProvider, TTS: s.cfg.TTSProvider,
+		Sample: s.sample, Presets: s.presets,
+		LLM: providers.TranslatorOptions{
+			Preset:    s.cfg.LLM.Preset,
+			BaseURL:   s.cfg.LLM.BaseURL,
+			APIKey:    s.cfg.LLM.APIKey,
+			Model:     s.cfg.LLM.Model,
+			ExtraBody: s.cfg.LLM.ExtraBody,
+		},
+	}
 }
 
 // Listen binds the configured port (0 means any free port) and serves.
@@ -248,9 +273,7 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	asr, translator, tts, err := providers.Select(providers.Config{
-		ASR: s.cfg.ASRProvider, Translator: s.cfg.TranslatorProvider, TTS: s.cfg.TTSProvider, Sample: s.sample,
-	})
+	asr, translator, tts, err := providers.Select(s.providerConfig())
 	if err != nil {
 		emit(&protocol.ErrorEvent{Type: "error", Kind: "protocol", Message: "could not start the Session: " + err.Error()})
 		_ = conn.Close(websocket.StatusInternalError, "session start failed")
@@ -266,12 +289,18 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		Log:               s.segmentLog,
 	})
 
-	hello, err := json.Marshal(session.Hello())
+	hello := session.Hello()
+	// The Session core does not know the Host's Preset configuration.
+	if presetTranslator, ok := translator.(interface{ Preset() providers.Preset }); ok {
+		preset := presetTranslator.Preset()
+		hello.PresetsInUse = []protocol.Preset{{ID: preset.ID, TrainsOnData: preset.TrainsOnData}}
+	}
+	payload, err := json.Marshal(hello)
 	if err != nil {
 		return
 	}
 	writeCtx, cancelWrite := context.WithTimeout(ctx, 10*time.Second)
-	err = conn.Write(writeCtx, websocket.MessageText, hello)
+	err = conn.Write(writeCtx, websocket.MessageText, payload)
 	cancelWrite()
 	if err != nil {
 		return

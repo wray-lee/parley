@@ -163,6 +163,17 @@ type Config struct {
 	Translator string
 	TTS        string
 	Sample     Sample
+	// Presets and LLM configure the openai Translator.
+	Presets *Presets
+	LLM     TranslatorOptions
+}
+
+// SelectTTS builds the TTS Provider named by TTS_PROVIDER.
+func SelectTTS(name string) (core.TTS, error) {
+	if name != "mock" {
+		return nil, fmt.Errorf("TTS_PROVIDER %q is not supported by this build; use mock", name)
+	}
+	return NewMockTTS(), nil
 }
 
 // Select builds the three Providers or fails loudly on an unsupported name.
@@ -170,11 +181,25 @@ func Select(config Config) (core.ASR, core.Translator, core.TTS, error) {
 	if config.ASR != "mock" {
 		return nil, nil, nil, fmt.Errorf("ASR_PROVIDER %q is not supported by this build; use mock", config.ASR)
 	}
-	if config.Translator != "mock" {
-		return nil, nil, nil, fmt.Errorf("translator %q is not supported by this build; use a mock setup (unset LLM_* variables)", config.Translator)
+	var translator core.Translator
+	switch config.Translator {
+	case "mock":
+		translator = NewMockTranslator(config.Sample.ReferenceTranslations)
+	case "openai":
+		if config.Presets == nil {
+			return nil, nil, nil, fmt.Errorf("translator openai needs config/presets.json")
+		}
+		openai, err := NewOpenAITranslator(config.Presets, config.LLM)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		translator = openai
+	default:
+		return nil, nil, nil, fmt.Errorf("translator %q is not supported by this build; use mock or openai", config.Translator)
 	}
-	if config.TTS != "mock" {
-		return nil, nil, nil, fmt.Errorf("TTS_PROVIDER %q is not supported by this build; use mock", config.TTS)
+	tts, err := SelectTTS(config.TTS)
+	if err != nil {
+		return nil, nil, nil, err
 	}
-	return NewMockASR(config.Sample), NewMockTranslator(config.Sample.ReferenceTranslations), NewMockTTS(), nil
+	return NewMockASR(config.Sample), translator, tts, nil
 }
