@@ -17,6 +17,7 @@ concurrency:
 
 env:
   GO_VERSION: '1.26.5'
+  BUN_VERSION: '1.4.3'
   FLUTTER_VERSION: '3.47.8'
   ANDROID_NDK_VERSION: '28.2.13676358'
   GOMOBILE_VERSION: 'v0.0.0-20261011034528-197770444867'
@@ -108,11 +109,19 @@ jobs:
 
   image:
     name: Distroless server image
-    needs: guard
+    needs: [guard, web]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: dist
+      - name: Extract the Flutter web bundle into the image context
+        run: |
+          mkdir -p web-app
+          tar -xzf dist/parley-*-web.tar.gz -C web-app
       - name: Build the distroless image from deploy/
         env:
           VERSION: ${{ needs.guard.outputs.version }}
@@ -150,9 +159,17 @@ jobs:
     name: Flutter web bundle
     needs: guard
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -160,11 +177,15 @@ jobs:
           cache: true
       - run: flutter pub get
         working-directory: client
-      - name: Build web (self-hosted CanvasKit and fonts)
+      - name: Build web (self-hosted CanvasKit)
         run: flutter build web --release --no-web-resources-cdn
         working-directory: client
-      - name: Brotli size budget (3.5 MiB)
-        run: node scripts/web-size-budget.mjs client/build/web
+      - name: Mirror the Noto CJK fallback slices
+        run: node scripts/self-host-fallback-fonts.mjs client/build/web
+      - name: Browser smoke (CSP, same-origin, /lite, no gstatic)
+        run: node scripts/web-release-gate.mjs client/build/web
+      - name: Brotli size budget (3.5 MiB, including cold-load fonts)
+        run: node scripts/web-size-budget.mjs client/build/web 3.5 client/build/web-fonts-used.json
       - name: Package the web bundle
         env:
           VERSION: ${{ needs.guard.outputs.version }}
@@ -330,7 +351,7 @@ jobs:
           **Artefacts**
           - \`parley-${VERSION}-arm64.apk\` — signed with the retained v0.0.2 key (certificate SHA-256 \`${CERT_SHA256}\`).
           - \`parley-${VERSION}-unsigned.ipa\` — install with AltStore/SideStore.
-          - \`parley-${VERSION}-web.tar.gz\` — Flutter web bundle, serve same-origin next to the server.
+          - \`parley-${VERSION}-web.tar.gz\` — Flutter web bundle (self-hosted CanvasKit and Noto CJK slices), served at \`/\`; extract it to \`web-app/\` next to a bare-metal server or use the release image. The vanilla client stays at \`/lite\`.
           - \`parley-server-<os>-<arch>.tar.gz\` — static server binaries (linux amd64/arm64, darwin arm64, windows amd64).
           - \`parley-server-${VERSION}-image.tar.gz\` — distroless image, \`docker load\` it.
 

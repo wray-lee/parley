@@ -440,4 +440,16 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get localNetworkDenied => '本地网络访问被拒绝。请在 Android 设置 > 权限中允许，然后再次保存。';
+
+  @override
+  String get accessTokenTitle => '访问令牌';
+
+  @override
+  String get accessTokenPrompt => '服务器要求提供访问令牌。令牌只保存在当前标签页的内存中。';
+
+  @override
+  String get accessTokenConnect => '连接';
+
+  @override
+  String get accessTokenCancel => '取消';
 }

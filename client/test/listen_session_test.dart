@@ -392,6 +392,41 @@ void main() {
     expect(logs.join('\n'), isNot(contains('ws?token=')));
   });
 
+  test('a failed connect can be retried with an access token', () async {
+    final first = FakeTransport()
+      ..connectError = WebSocketChannelException.from(
+        'WebSocketException: Connection failed',
+      );
+    final second = FakeTransport();
+    final session = ListenSession(
+      transport: first,
+      audio: FakeAudioCapture(),
+      ttsPlayer: FakeTtsPlayer(),
+      loadSamples: () async => const [],
+      reopenTransport: (token) {
+        expect(token, 'secret-token');
+        return second;
+      },
+    );
+
+    await session.connect();
+    expect(session.status, SessionStatus.failed);
+    expect(session.canRetryWithToken, isTrue);
+
+    await session.retryWithToken('secret-token');
+    second.emit(helloMessage());
+    await pumpEventQueue();
+
+    expect(session.status, SessionStatus.ready);
+    expect(session.pairs, isNotEmpty);
+    expect(first.sentText, isEmpty);
+  });
+
+  test('a Session without a server transport cannot retry with a token', () {
+    final s = makeSession();
+    expect(s.session.canRetryWithToken, isFalse);
+  });
+
   test('a Device Host failure surfaces its redacted message', () async {
     final s = makeSession();
     s.transport.connectError = const DeviceHostException(

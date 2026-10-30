@@ -2,10 +2,15 @@
 // fonts included. The Flutter bundle ships one renderer per browser plus
 // lazily-loaded pieces, so the gate counts what one cold app start fetches:
 // the entry files, main.dart.js, the largest CanvasKit pair, fonts and the
-// assets manifest. Alternate renderers, debug symbols, source maps, PWA icons
-// and the TTS engine (loaded on the first playback) are not cold-load bytes.
+// assets manifest. Alternate renderers, debug symbols, source maps, PWA icons,
+// the TTS engine (loaded on the first playback) and fallback font slices that
+// a cold load did not request are not cold-load bytes.
 //
-// Usage: node scripts/web-size-budget.mjs [DIR] [BUDGET_MIB]
+// The fallback slices are fetched only for glyphs the bundled fonts miss.
+// scripts/web-release-gate.mjs records the ones a zh-CN cold load requested;
+// pass that list to count exactly those slices:
+//
+// Usage: node scripts/web-size-budget.mjs [DIR] [BUDGET_MIB] [FONTS_USED_JSON]
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { brotliCompressSync, constants } from 'node:zlib';
@@ -17,6 +22,18 @@ if (!Number.isFinite(budgetMiB) || budgetMiB <= 0) {
   process.exit(2);
 }
 
+const fontsUsedPath = process.argv[4] ?? process.env.WEB_FONTS_USED;
+const fontsUsed = new Set();
+if (fontsUsedPath) {
+  for (const name of JSON.parse(readFileSync(fontsUsedPath, 'utf8'))) {
+    if (!existsSync(join(dir, name))) {
+      console.error(`font used at cold load is missing from ${dir}: ${name}`);
+      process.exit(1);
+    }
+    fontsUsed.add(name);
+  }
+}
+
 const notColdLoad = [
   /^canvaskit\/(chromium|webparagraph|skwasm|wimp)/,
   /\.symbols$/,
@@ -25,6 +42,8 @@ const notColdLoad = [
   /^favicon\.png$/,
   /^assets\/NOTICES$/,
   /^assets\/packages\/flutter_soloud\//,
+  // Lazily fetched for missing glyphs; the worked example lists them.
+  /^fonts\//,
 ];
 
 const required = ['index.html', 'flutter_bootstrap.js', 'main.dart.js', 'canvaskit/canvaskit.wasm'];
@@ -45,7 +64,7 @@ const walk = (current) => {
       continue;
     }
     const name = relative(dir, path).split(sep).join('/');
-    if (notColdLoad.some((pattern) => pattern.test(name))) continue;
+    if (notColdLoad.some((pattern) => pattern.test(name)) && !fontsUsed.has(name)) continue;
     const size = brotliCompressSync(readFileSync(path), {
       params: { [constants.BROTLI_PARAM_QUALITY]: 11 },
     }).length;

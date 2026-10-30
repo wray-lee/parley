@@ -939,6 +939,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Local network access is denied. Allow it in Android Settings > Permissions, then save again.'**
   String get localNetworkDenied;
+
+  /// No description provided for @accessTokenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Access token'**
+  String get accessTokenTitle;
+
+  /// No description provided for @accessTokenPrompt.
+  ///
+  /// In en, this message translates to:
+  /// **'The server asked for an access token. It is kept in this tab\'s memory only.'**
+  String get accessTokenPrompt;
+
+  /// No description provided for @accessTokenConnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get accessTokenConnect;
+
+  /// No description provided for @accessTokenCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get accessTokenCancel;
 }
 
 class _AppLocalizationsDelegate

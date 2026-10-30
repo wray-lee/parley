@@ -8,7 +8,7 @@ arm64 APK and the unsigned IPA. There is no GHCR image in v0.1.
 |---|---|---|
 | `parley-server-linux-amd64.tar.gz`, `-linux-arm64`, `-darwin-arm64`, `-windows-amd64` | `CGO_ENABLED=0 go build ./cmd/parley-server` on Ubuntu | Built and run locally |
 | `parley-server-<version>-image.tar.gz` | `deploy/Dockerfile` (distroless static, one Go binary), `docker save` | Dockerfile built by ticket 10; the workflow runs and smokes it on every release |
-| `parley-<version>-web.tar.gz` | `flutter build web --release --no-web-resources-cdn` | Built locally; brotli budget enforced in CI |
+| `parley-<version>-web.tar.gz` | `flutter build web --release --no-web-resources-cdn`, plus the mirrored Noto CJK fallback slices | Built locally; browser smoke, CSP, same-origin and brotli budget enforced in CI; the image embeds it at `/`, bare metal extracts it to `web-app/` |
 | `parley-<version>-arm64.apk` | gomobile arm64 AAR + `flutter build apk --release`, signed with the retained v0.0.2 key | Signed locally with that key; certificate checked by the workflow |
 | `parley-<version>-unsigned.ipa` | `flutter build ios --release --no-codesign` on `macos-latest` | Workflow only (no macOS host here); first run is PENDING-USER |
 

@@ -446,4 +446,17 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get localNetworkDenied =>
       'ローカルネットワークへのアクセスが拒否されました。Android の設定 > 権限で許可してから、もう一度保存してください。';
+
+  @override
+  String get accessTokenTitle => 'アクセストークン';
+
+  @override
+  String get accessTokenPrompt =>
+      'サーバーがアクセストークンを要求しました。トークンはこのタブのメモリにのみ保持されます。';
+
+  @override
+  String get accessTokenConnect => '接続';
+
+  @override
+  String get accessTokenCancel => 'キャンセル';
 }

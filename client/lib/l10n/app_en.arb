@@ -180,5 +180,9 @@
   "converseFirstUseTitle": "Face to face",
   "converseFirstUseBody": "Set the phone between you. Each half is in one speaker's language, and the far half is turned for them. Tap a half to take the Turn; hold it to talk.",
   "gotIt": "Got it",
-  "localNetworkDenied": "Local network access is denied. Allow it in Android Settings > Permissions, then save again."
+  "localNetworkDenied": "Local network access is denied. Allow it in Android Settings > Permissions, then save again.",
+  "accessTokenTitle": "Access token",
+  "accessTokenPrompt": "The server asked for an access token. It is kept in this tab's memory only.",
+  "accessTokenConnect": "Connect",
+  "accessTokenCancel": "Cancel"
 }

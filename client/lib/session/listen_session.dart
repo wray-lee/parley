@@ -32,7 +32,9 @@ class ListenSession extends ChangeNotifier {
     Future<List<SampleRef>> Function()? loadSamples,
     http.Client? httpClient,
     MicPermission? micPermission,
+    Transport Function(String token)? reopenTransport,
   }) : _transport = transport,
+       _reopenTransport = reopenTransport,
        _audio = audio,
        _systemTtsEngine = systemTtsEngine,
        _serverBase = serverBase,
@@ -48,7 +50,10 @@ class ListenSession extends ChangeNotifier {
     );
   }
 
-  final Transport _transport;
+  Transport _transport;
+
+  /// Web rebuilds the WebSocket with the access token the server asked for.
+  final Transport Function(String token)? _reopenTransport;
   final AudioCapture _audio;
   final SystemTtsEngine? _systemTtsEngine;
   final Uri? _serverBase;
@@ -219,6 +224,32 @@ class ListenSession extends ChangeNotifier {
 
   Future<void> connect() async {
     debugPrint('PARLEY connect');
+    _subscribe();
+    await _connectTransport();
+  }
+
+  /// True when the client can ask for an access token and reconnect (web).
+  bool get canRetryWithToken => _reopenTransport != null;
+
+  /// Replaces the transport with one that carries [token] and retries the
+  /// handshake. The UI only calls this after a failed connect.
+  Future<void> retryWithToken(String token) async {
+    final reopen = _reopenTransport;
+    if (reopen == null || _disposed) return;
+    // cancel() stops events at once; its returned future only reports cleanup,
+    // and a dead socket must not block the retry.
+    unawaited(_textSubscription?.cancel());
+    unawaited(_binarySubscription?.cancel());
+    unawaited(_transport.close());
+    _transport = reopen(token);
+    status = SessionStatus.connecting;
+    error = null;
+    _notify();
+    _subscribe();
+    await _connectTransport();
+  }
+
+  void _subscribe() {
     _textSubscription = _transport.text.listen(
       _handleText,
       onError: _transportFailed,
@@ -227,7 +258,6 @@ class ListenSession extends ChangeNotifier {
       _tts.chunk,
       onError: _transportFailed,
     );
-    await _connectTransport();
   }
 
   /// Maps a transport failure to the banner and reports whether the transport

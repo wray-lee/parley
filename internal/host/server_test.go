@@ -1,6 +1,7 @@
 package host_test
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/coder/websocket"
@@ -120,6 +122,163 @@ func TestHealthzAndStaticClient(t *testing.T) {
 	post.Body.Close()
 	if post.StatusCode != 405 {
 		t.Fatalf("POST healthz = %d, want 405", post.StatusCode)
+	}
+}
+
+func flutterAssets() fstest.MapFS {
+	return fstest.MapFS{
+		"index.html":               &fstest.MapFile{Data: []byte("flutter-root")},
+		"main.dart.js":             &fstest.MapFile{Data: []byte("flutter-main")},
+		"canvaskit/canvaskit.wasm": &fstest.MapFile{Data: []byte("wasm-bytes")},
+		"fonts/notosansjp/a.woff2": &fstest.MapFile{Data: []byte("woff2-bytes")},
+	}
+}
+
+// The Flutter web build is the web app at /; the embedded vanilla client
+// stays available at /lite until the release gates pass.
+func TestFlutterWebAtRootAndVanillaAtLite(t *testing.T) {
+	_, port, _ := startServerWith(t, map[string]string{}, host.Options{Web: flutterAssets()})
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+
+	response, body := get(t, base+"/")
+	if response.StatusCode != 200 || body != "flutter-root" || !strings.HasPrefix(response.Header.Get("content-type"), "text/html") {
+		t.Fatalf("flutter index = %d %q %v", response.StatusCode, body, response.Header)
+	}
+	response, body = get(t, base+"/main.dart.js")
+	if response.StatusCode != 200 || body != "flutter-main" || response.Header.Get("content-type") != "text/javascript; charset=utf-8" {
+		t.Fatalf("flutter js = %d %q %v", response.StatusCode, body, response.Header)
+	}
+	response, body = get(t, base+"/canvaskit/canvaskit.wasm")
+	if response.StatusCode != 200 || body != "wasm-bytes" || response.Header.Get("content-type") != "application/wasm" {
+		t.Fatalf("canvaskit = %d %q %v", response.StatusCode, body, response.Header)
+	}
+	response, body = get(t, base+"/fonts/notosansjp/a.woff2")
+	if response.StatusCode != 200 || body != "woff2-bytes" || response.Header.Get("content-type") != "font/woff2" {
+		t.Fatalf("fallback slice = %d %q %v", response.StatusCode, body, response.Header)
+	}
+
+	// /lite without the trailing slash would resolve its relative assets at
+	// the root, so it redirects.
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := noFollow.Get(base + "/lite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusMovedPermanently || response.Header.Get("location") != "/lite/" {
+		t.Fatalf("/lite = %d %q, want 301 /lite/", response.StatusCode, response.Header.Get("location"))
+	}
+
+	response, body = get(t, base+"/lite/")
+	if response.StatusCode != 200 || !strings.Contains(body, "DEMO — mock providers") || !strings.HasPrefix(response.Header.Get("content-type"), "text/html") {
+		t.Fatalf("vanilla index = %d %q", response.StatusCode, body[:min(len(body), 80)])
+	}
+	response, body = get(t, base+"/lite/main.js")
+	if response.StatusCode != 200 || response.Header.Get("content-type") != "text/javascript; charset=utf-8" {
+		t.Fatalf("vanilla js = %d %v", response.StatusCode, response.Header)
+	}
+
+	// The vanilla client's two root-absolute asset URLs keep working when it
+	// is mounted under /lite.
+	for _, asset := range []string{"/main.js", "/mic-worklet.js"} {
+		response, err = noFollow.Get(base + asset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusMovedPermanently || response.Header.Get("location") != "/lite"+asset {
+			t.Fatalf("%s = %d %q, want 301 /lite%s", asset, response.StatusCode, response.Header.Get("location"), asset)
+		}
+	}
+
+	// Samples and the Session endpoints are not shadowed by the web app.
+	response, body = get(t, base+"/samples/placeholder.json")
+	if response.StatusCode != 200 || !strings.Contains(body, `"id": "placeholder"`) {
+		t.Fatalf("sample = %d %q", response.StatusCode, body)
+	}
+	if response, _ = get(t, base+"/nope.js"); response.StatusCode != 404 {
+		t.Fatalf("missing flutter file = %d, want 404", response.StatusCode)
+	}
+	if response, _ = get(t, base+"/lite/../index.html"); response.StatusCode != 404 {
+		t.Fatalf("lite traversal = %d, want 404", response.StatusCode)
+	}
+}
+
+func TestStaticSecurityHeaders(t *testing.T) {
+	_, port, _ := startServer(t, map[string]string{})
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+
+	for _, url := range []string{base + "/", base + "/lite/", base + "/main.js"} {
+		response, _ := get(t, url)
+		csp := response.Header.Get("content-security-policy")
+		for _, want := range []string{
+			"default-src 'self'",
+			"script-src 'self'",
+			"style-src 'self' 'unsafe-inline'",
+			"font-src 'self'",
+			"connect-src 'self'",
+			"object-src 'none'",
+			"base-uri 'self'",
+			"frame-ancestors 'none'",
+		} {
+			if !strings.Contains(csp, want) {
+				t.Fatalf("%s CSP %q missing %q", url, csp, want)
+			}
+		}
+		if strings.Contains(csp, "gstatic") {
+			t.Fatalf("%s CSP must not allow fonts.gstatic.com: %q", url, csp)
+		}
+		if got := response.Header.Get("x-content-type-options"); got != "nosniff" {
+			t.Fatalf("%s x-content-type-options = %q", url, got)
+		}
+		if got := response.Header.Get("referrer-policy"); got != "no-referrer" {
+			t.Fatalf("%s referrer-policy = %q", url, got)
+		}
+	}
+}
+
+func TestStaticGzip(t *testing.T) {
+	_, port, _ := startServer(t, map[string]string{})
+	base := fmt.Sprintf("http://127.0.0.1:%d", port)
+	want, err := parley.Assets.ReadFile("web/main.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	request, _ := http.NewRequest(http.MethodGet, base+"/main.js", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if got := response.Header.Get("content-encoding"); got != "gzip" {
+		t.Fatalf("content-encoding = %q, want gzip", got)
+	}
+	if got := response.Header.Get("vary"); !strings.Contains(got, "Accept-Encoding") {
+		t.Fatalf("vary = %q, want Accept-Encoding", got)
+	}
+	reader, err := gzip.NewReader(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != string(want) {
+		t.Fatalf("gzip body does not round-trip (%d vs %d bytes)", len(body), len(want))
+	}
+
+	// A client that does not accept gzip gets the plain bytes.
+	response, err = http.Get(base + "/main.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if got := response.Header.Get("content-encoding"); got != "" {
+		t.Fatalf("unrequested content-encoding = %q", got)
 	}
 }
 

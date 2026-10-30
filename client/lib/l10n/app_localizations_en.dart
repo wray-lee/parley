@@ -455,4 +455,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get localNetworkDenied =>
       'Local network access is denied. Allow it in Android Settings > Permissions, then save again.';
+
+  @override
+  String get accessTokenTitle => 'Access token';
+
+  @override
+  String get accessTokenPrompt =>
+      'The server asked for an access token. It is kept in this tab\'s memory only.';
+
+  @override
+  String get accessTokenConnect => 'Connect';
+
+  @override
+  String get accessTokenCancel => 'Cancel';
 }

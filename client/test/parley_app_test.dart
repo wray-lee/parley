@@ -224,4 +224,42 @@ void main() {
     expect(session.status, SessionStatus.stopped);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   });
+
+  testWidgets('a failed web connect asks for the access token and retries', (
+    tester,
+  ) async {
+    final first = FakeTransport()..connectError = StateError('401');
+    final second = FakeTransport();
+    final session = ListenSession(
+      transport: first,
+      audio: FakeAudioCapture(),
+      ttsPlayer: FakeTtsPlayer(),
+      loadSamples: () async => const [],
+      reopenTransport: (token) {
+        expect(token, 'secret');
+        return second;
+      },
+    );
+
+    await tester.pumpWidget(
+      ParleyApp(
+        createSession: () => session,
+        readOnlySettings: true,
+        promptForToken: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('access-token')), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('access-token')), 'secret');
+    await tester.tap(find.byKey(const Key('access-token-connect')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const Key('access-token')), findsNothing);
+    expect(session.status, SessionStatus.connecting, reason: 'retry started');
+    second.emit(converseHello());
+    await tester.pumpAndSettle();
+    expect(session.status, SessionStatus.ready);
+  });
 }

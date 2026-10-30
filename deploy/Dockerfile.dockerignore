@@ -1,5 +1,6 @@
 # Keep node_modules, .git, tmp/, .scratch/, client/ and spikes/ out of the
-# build context. The Go binary embeds exactly the directories listed below.
+# build context. The Go binary embeds exactly the directories listed below;
+# web-app carries the Flutter web bundle into the image.
 *
 !go.mod
 !go.sum
@@ -11,3 +12,4 @@
 !prompts
 !samples
 !web
+!web-app

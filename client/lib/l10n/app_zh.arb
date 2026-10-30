@@ -146,5 +146,9 @@
   "converseFirstUseTitle": "面对面",
   "converseFirstUseBody": "把手机放在两人之间。每一半显示该说话者的语言，远端的一半会旋转 180 度。轻点一半取得话轮，按住说话。",
   "gotIt": "知道了",
-  "localNetworkDenied": "本地网络访问被拒绝。请在 Android 设置 > 权限中允许，然后再次保存。"
+  "localNetworkDenied": "本地网络访问被拒绝。请在 Android 设置 > 权限中允许，然后再次保存。",
+  "accessTokenTitle": "访问令牌",
+  "accessTokenPrompt": "服务器要求提供访问令牌。令牌只保存在当前标签页的内存中。",
+  "accessTokenConnect": "连接",
+  "accessTokenCancel": "取消"
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:material_ui/material_ui.dart';
 
+import '../l10n/app_localizations.dart';
 import '../l10n/parley_localizations.dart';
 import '../model/mode.dart';
 import '../platform/first_run_store_api.dart';
@@ -21,6 +22,7 @@ class ParleyApp extends StatefulWidget {
     required this.createSession,
     this.settings,
     this.readOnlySettings = kIsWeb,
+    this.promptForToken = kIsWeb,
     this.firstRun,
     this.showOnboarding = false,
   });
@@ -30,6 +32,9 @@ class ParleyApp extends StatefulWidget {
   /// Native builds edit and persist Provider settings; web is read-only.
   final SettingsController? settings;
   final bool readOnlySettings;
+
+  /// Web asks for the access token after a failed connect and retries.
+  final bool promptForToken;
 
   /// First-run flags; null means the host has nowhere to keep them (tests).
   final FirstRunStore? firstRun;
@@ -45,6 +50,7 @@ class _ParleyAppState extends State<ParleyApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late final ListenSession _session;
   bool _started = false;
+  bool _promptingToken = false;
   late bool _onboarded = !widget.showOnboarding;
 
   @override
@@ -52,14 +58,41 @@ class _ParleyAppState extends State<ParleyApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _session = widget.createSession();
+    _session.addListener(_maybePromptToken);
     _session.connect();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _session.removeListener(_maybePromptToken);
     _session.dispose();
     super.dispose();
+  }
+
+  /// Web has no settings field for the access token, so a rejected handshake
+  /// asks for it here and retries. The token stays in memory for this tab.
+  Future<void> _maybePromptToken() async {
+    if (!widget.promptForToken ||
+        _promptingToken ||
+        _session.status != SessionStatus.failed ||
+        !_session.canRetryWithToken) {
+      return;
+    }
+    final context = _navigatorKey.currentContext;
+    if (context == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _maybePromptToken());
+      return;
+    }
+    _promptingToken = true;
+    final token = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AccessTokenDialog(),
+    );
+    _promptingToken = false;
+    if (!mounted || token == null) return;
+    await _session.retryWithToken(token);
   }
 
   @override
@@ -139,6 +172,65 @@ class _ParleyAppState extends State<ParleyApp> with WidgetsBindingObserver {
               onSettings: _openSettings,
               onUseKeys: onUseKeys,
             ),
+    );
+  }
+}
+
+/// The web client's only credential field; it exists after a failed connect,
+/// never in Settings.
+class AccessTokenDialog extends StatefulWidget {
+  const AccessTokenDialog({super.key});
+
+  @override
+  State<AccessTokenDialog> createState() => _AccessTokenDialogState();
+}
+
+class _AccessTokenDialogState extends State<AccessTokenDialog> {
+  final _token = TextEditingController();
+
+  @override
+  void dispose() {
+    _token.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.of(context).pop(_token.text);
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.accessTokenTitle),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(l10n.accessTokenPrompt),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('access-token'),
+            controller: _token,
+            autofocus: true,
+            obscureText: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            onSubmitted: (_) => _submit(),
+            decoration: const InputDecoration(border: OutlineInputBorder()),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          key: const Key('access-token-cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.accessTokenCancel),
+        ),
+        FilledButton(
+          key: const Key('access-token-connect'),
+          onPressed: _submit,
+          child: Text(l10n.accessTokenConnect),
+        ),
+      ],
     );
   }
 }

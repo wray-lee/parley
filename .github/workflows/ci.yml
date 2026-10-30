@@ -106,12 +106,20 @@ jobs:
         run: flutter test
         working-directory: client
 
-  web-budget:
-    name: Web brotli size budget
+  web-release-gate:
+    name: Web release gate (Flutter at /, vanilla at /lite)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -119,11 +127,15 @@ jobs:
           cache: true
       - run: flutter pub get
         working-directory: client
-      - name: Build web (self-hosted CanvasKit and fonts)
+      - name: Build web (self-hosted CanvasKit)
         run: flutter build web --release --no-web-resources-cdn
         working-directory: client
-      - name: Brotli size budget (3.5 MiB)
-        run: node scripts/web-size-budget.mjs client/build/web
+      - name: Mirror the Noto CJK fallback slices
+        run: node scripts/self-host-fallback-fonts.mjs client/build/web
+      - name: Browser smoke (CSP, same-origin, /lite, no gstatic)
+        run: node scripts/web-release-gate.mjs client/build/web
+      - name: Brotli size budget (3.5 MiB, including cold-load fonts)
+        run: node scripts/web-size-budget.mjs client/build/web 3.5 client/build/web-fonts-used.json
 
   changes:
     name: Android path filter

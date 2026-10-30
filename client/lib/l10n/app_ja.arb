@@ -146,5 +146,9 @@
   "converseFirstUseTitle": "対面モード",
   "converseFirstUseBody": "スマートフォンを二人の間に置きます。それぞれの半分がその話者の言語で表示され、相手側は 180 度回転します。半分をタップしてターンを取ります。長押しで話します。",
   "gotIt": "了解",
-  "localNetworkDenied": "ローカルネットワークへのアクセスが拒否されました。Android の設定 > 権限で許可してから、もう一度保存してください。"
+  "localNetworkDenied": "ローカルネットワークへのアクセスが拒否されました。Android の設定 > 権限で許可してから、もう一度保存してください。",
+  "accessTokenTitle": "アクセストークン",
+  "accessTokenPrompt": "サーバーがアクセストークンを要求しました。トークンはこのタブのメモリにのみ保持されます。",
+  "accessTokenConnect": "接続",
+  "accessTokenCancel": "キャンセル"
 }

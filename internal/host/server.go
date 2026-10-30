@@ -4,10 +4,13 @@
 package host
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -34,12 +37,19 @@ type Options struct {
 	// Loopback binds 127.0.0.1 instead of every interface, as the Device Host's
 	// Loopback Host must (ADR-0003). The Server Host leaves it false.
 	Loopback bool
+	// Host overrides the bind address (HOST=127.0.0.1 keeps a local check off
+	// the firewall). Empty binds every interface. Loopback wins when both set.
+	Host string
+	// Web is the Flutter web release build to serve at /. Nil keeps the
+	// embedded vanilla client at / and still exposes it at /lite.
+	Web fs.FS
 }
 
 // Server is the Server Host.
 type Server struct {
 	cfg               Config
 	assets            fs.FS
+	web               fs.FS
 	registry          *core.Registry
 	pairConfig        map[string]core.PairConfig
 	forcedInstruction string
@@ -51,6 +61,7 @@ type Server struct {
 	warn              func(string)
 	rejectOrigin      bool
 	loopback          bool
+	bindHost          string
 	httpServer        *http.Server
 	listener          net.Listener
 
@@ -60,7 +71,7 @@ type Server struct {
 
 // New loads and validates the product assets and the Provider selection.
 func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
-	server := &Server{cfg: cfg, assets: assets, segmentLog: options.SegmentLog, warn: options.Warn, rejectOrigin: options.RejectOrigin, loopback: options.Loopback, conns: map[*websocket.Conn]struct{}{}}
+	server := &Server{cfg: cfg, assets: assets, web: options.Web, segmentLog: options.SegmentLog, warn: options.Warn, rejectOrigin: options.RejectOrigin, loopback: options.Loopback, bindHost: options.Host, conns: map[*websocket.Conn]struct{}{}}
 	if server.segmentLog == nil {
 		server.segmentLog = func(protocol.SegmentLog) {}
 	}
@@ -156,7 +167,7 @@ func (s *Server) providerConfig(samples *providers.SampleBook) providers.Config 
 
 // Listen binds the configured port (0 means any free port) and serves.
 func (s *Server) Listen() error {
-	host := ""
+	host := s.bindHost
 	if s.loopback {
 		host = "127.0.0.1"
 	}
@@ -226,23 +237,64 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.serveStatic(w, r)
 }
 
+// staticCSP is strict enough to keep the app same-origin: the Flutter loader
+// needs wasm compilation, inline styles and its same-origin WebSocket, nothing
+// else. fonts.gstatic.com is unreachable by design.
+const staticCSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; " +
+	"style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+	"font-src 'self'; connect-src 'self'; media-src 'self' blob:; " +
+	"worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+
 func (s *Server) serveStatic(w http.ResponseWriter, r *http.Request) {
-	name, ok := staticName(r.URL.Path)
+	var fsys fs.FS
+	base, relative := "web", r.URL.Path
+	usingWeb := false
+	switch {
+	case r.URL.Path == "/lite":
+		// Relative assets would resolve at the root without the slash.
+		http.Redirect(w, r, "/lite/", http.StatusMovedPermanently)
+		return
+	case strings.HasPrefix(r.URL.Path, "/lite/"):
+		relative = strings.TrimPrefix(r.URL.Path, "/lite/")
+	case strings.HasPrefix(r.URL.Path, "/samples/"):
+		base, relative = "samples", strings.TrimPrefix(r.URL.Path, "/samples/")
+	default:
+		if s.web != nil {
+			fsys, base, usingWeb = s.web, "", true
+		}
+	}
+	if fsys == nil {
+		fsys = s.assets
+	}
+	name, ok := staticName(base, relative)
 	if !ok {
 		writeNotFound(w, r)
 		return
 	}
-	data, err := fs.ReadFile(s.assets, name)
+	data, err := fs.ReadFile(fsys, name)
 	if err != nil {
+		// The vanilla client keeps two root-absolute asset URLs (/main.js,
+		// /mic-worklet.js) from its root-serving days; redirect them to the
+		// /lite mount so its relative module imports resolve under /lite/.
+		if usingWeb && s.redirectVanilla(w, r) {
+			return
+		}
 		writeNotFound(w, r)
 		return
 	}
-	w.Header().Set("content-type", mimeType(name))
-	w.Header().Set("cache-control", "no-store")
-	w.WriteHeader(http.StatusOK)
-	if r.Method != http.MethodHead {
-		_, _ = w.Write(data)
+	writeStatic(w, r, name, data)
+}
+
+func (s *Server) redirectVanilla(w http.ResponseWriter, r *http.Request) bool {
+	name, ok := staticName("web", r.URL.Path)
+	if !ok {
+		return false
 	}
+	if _, err := fs.Stat(s.assets, name); err != nil {
+		return false
+	}
+	http.Redirect(w, r, "/lite/"+strings.TrimLeft(r.URL.Path, "/"), http.StatusMovedPermanently)
+	return true
 }
 
 func writeNotFound(w http.ResponseWriter, r *http.Request) {
@@ -252,11 +304,7 @@ func writeNotFound(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func staticName(urlPath string) (string, bool) {
-	base, relative := "web", strings.TrimPrefix(urlPath, "/")
-	if strings.HasPrefix(urlPath, "/samples/") {
-		base, relative = "samples", strings.TrimPrefix(urlPath, "/samples/")
-	}
+func staticName(base, relative string) (string, bool) {
 	// The Bun host strips every leading slash, so "//index.html" still serves.
 	relative = strings.TrimLeft(relative, "/")
 	if relative == "" {
@@ -266,19 +314,72 @@ func staticName(urlPath string) (string, bool) {
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
 		return "", false
 	}
+	if base == "" {
+		return clean, true
+	}
 	return base + "/" + clean, true
+}
+
+func writeStatic(w http.ResponseWriter, r *http.Request, name string, data []byte) {
+	w.Header().Set("content-security-policy", staticCSP)
+	w.Header().Set("x-content-type-options", "nosniff")
+	w.Header().Set("referrer-policy", "no-referrer")
+	w.Header().Set("content-type", mimeType(name))
+	w.Header().Set("cache-control", "no-store")
+	// CanvasKit, main.dart.js and the entry HTML dominate the cold load, so
+	// compress them; fonts and images are already compressed.
+	if len(data) >= 1024 && compressible(name) && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("content-encoding", "gzip")
+		w.Header().Add("vary", "Accept-Encoding")
+		w.WriteHeader(http.StatusOK)
+		if r.Method == http.MethodHead {
+			return
+		}
+		writer := gzip.NewWriter(w)
+		_, _ = io.Copy(writer, bytes.NewReader(data))
+		_ = writer.Close()
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(data)
+	}
+}
+
+func compressible(name string) bool {
+	switch path.Ext(name) {
+	case ".html", ".js", ".mjs", ".wasm", ".css", ".json", ".map", ".svg", ".txt":
+		return true
+	}
+	return false
 }
 
 func mimeType(name string) string {
 	switch path.Ext(name) {
 	case ".html":
 		return "text/html; charset=utf-8"
-	case ".js":
+	case ".js", ".mjs":
 		return "text/javascript; charset=utf-8"
 	case ".css":
 		return "text/css; charset=utf-8"
-	case ".json":
+	case ".json", ".map":
 		return "application/json; charset=utf-8"
+	case ".wasm":
+		return "application/wasm"
+	case ".woff2":
+		return "font/woff2"
+	case ".ttf":
+		return "font/ttf"
+	case ".otf":
+		return "font/otf"
+	case ".png":
+		return "image/png"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".txt":
+		return "text/plain; charset=utf-8"
 	case ".wav":
 		return "audio/wav"
 	case ".mp3":

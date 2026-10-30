@@ -1,8 +1,10 @@
 # Server Host deployment
 
 The Server Host is one static Go binary (`cmd/parley-server`) on a distroless
-image. It serves the web client, `/healthz` and `/samples`, and proxies to no
-external service in Demo Mode. Caddy terminates HTTPS: an internal CA by
+image. It serves the Flutter web client at `/` and the vanilla client at
+`/lite`, plus `/healthz` and `/samples`; nothing is fetched from a CDN, so
+CanvasKit and the Noto CJK fallback slices come from the server. It proxies to
+no external service in Demo Mode. Caddy terminates HTTPS: an internal CA by
 default, Let's Encrypt when `PUBLIC_DOMAIN` is set.
 
 ## Docker quick start
@@ -78,10 +80,17 @@ The same environment variables and one static binary:
 
 ```sh
 CGO_ENABLED=0 go build -o parley-server ./cmd/parley-server
+mkdir -p web-app
+tar -xzf parley-<version>-web.tar.gz -C web-app   # the Flutter web build
 ./parley-server
 ```
 
-It listens on `PORT` (default 3000) on all interfaces. Put Caddy, nginx or a
+`PARLEY_WEB_DIR` points at another directory. Without it the server looks for
+`web-app/index.html` next to its working directory and otherwise keeps the
+embedded vanilla client at `/` (and `/lite`).
+
+It listens on `PORT` (default 3000) on all interfaces; set `HOST=127.0.0.1`
+to bind loopback only. Put Caddy, nginx or a
 tunnel in front for HTTPS; keep `ACCESS_TOKEN` set if the port is reachable by
 anyone else. To use Caddy directly with the same certificates, reuse
 `deploy/Caddyfile` and change `app:3000` to `127.0.0.1:3000`.
@@ -96,6 +105,6 @@ itself: `/app/parley-server -healthcheck` probes `/healthz` on `PORT`.
 `ACCESS_TOKEN` is one optional shared passphrase for the whole host, not an
 account and not a user system. Set it before exposing the host to the
 internet; leave it empty on a trusted LAN. The Server Host rejects a WebSocket
-handshake whose `/ws?token=` does not match. The built-in web client prompts
-once per tab and sends the token as `?token=`; it keeps it in `sessionStorage`
-only.
+handshake whose `/ws?token=` does not match. The Flutter web client asks for
+the token after the first failed connect and keeps it in that tab's memory
+only; the vanilla `/lite` client uses `sessionStorage`.

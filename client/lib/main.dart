@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/semantics.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'app_config.dart';
@@ -19,6 +21,11 @@ import 'ui/parley_app.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    // Flutter Web semantics are opt-in; without the handle VoiceOver and
+    // TalkBack have nothing to read.
+    SemanticsBinding.instance.ensureSemantics();
+  }
   final config = AppConfig.fromEnvironment();
   final mic = createMicPermission();
   final firstRun = createFirstRunStore();
@@ -44,7 +51,9 @@ Future<void> main() async {
           host: embedded,
           environment: () => hostEnvironment(settings.values, presets),
         );
-  transport = hostTransport ?? WebSocketTransport(config.wsUri);
+  Transport openServer(String token) =>
+      WebSocketTransport(config.wsUriFor(token));
+  transport = hostTransport ?? openServer(config.token);
   if (hostTransport != null) {
     WidgetsBinding.instance.addObserver(
       HostLifecycle(
@@ -61,6 +70,7 @@ Future<void> main() async {
       showOnboarding: !await firstRun.seen('onboarding'),
       createSession: () => ListenSession(
         transport: transport,
+        reopenTransport: hostTransport == null ? openServer : null,
         audio: createAudioCapture(),
         ttsPlayer: createTtsPlayer(),
         serverBase: config.hasServer ? config.baseUri : null,

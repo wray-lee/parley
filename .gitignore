@@ -11,3 +11,8 @@ client/android/app/libs/*.jar
 
 # gomobile Device Host XCFramework (scripts/build-parley-core-ios.sh)
 client/ios/Frameworks/*.xcframework
+
+# Flutter web release bundle (parley-*-web.tar.gz), extracted next to the
+# server binary or into the image at build time.
+/web-app/*
+!/web-app/.gitkeep

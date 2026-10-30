@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -21,7 +22,13 @@ func main() {
 		os.Exit(healthcheck())
 	}
 	cfg := host.LoadConfig(os.Getenv)
-	server, err := host.New(cfg, parley.Assets, host.Options{
+	web, err := webDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	options := host.Options{
+		Host: os.Getenv("HOST"),
 		SegmentLog: func(record protocol.SegmentLog) {
 			line, err := json.Marshal(record)
 			if err != nil {
@@ -30,7 +37,11 @@ func main() {
 			fmt.Println(string(line))
 		},
 		Warn: func(line string) { fmt.Fprintln(os.Stderr, line) },
-	})
+	}
+	if web != "" {
+		options.Web = os.DirFS(web)
+	}
+	server, err := host.New(cfg, parley.Assets, options)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -45,6 +56,24 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 	_ = server.Close()
+}
+
+// webDir is the Flutter web release build served at /. The image and the
+// release tarball put it in web-app/ next to the binary; PARLEY_WEB_DIR
+// overrides that. An unset default keeps the embedded vanilla client.
+func webDir() (string, error) {
+	dir := os.Getenv("PARLEY_WEB_DIR")
+	explicit := dir != ""
+	if !explicit {
+		dir = "web-app"
+	}
+	if info, err := os.Stat(filepath.Join(dir, "index.html")); err != nil || info.IsDir() {
+		if explicit {
+			return "", fmt.Errorf("PARLEY_WEB_DIR=%s has no index.html", dir)
+		}
+		return "", nil
+	}
+	return dir, nil
 }
 
 // healthcheck probes this container's /healthz for the distroless image, which
