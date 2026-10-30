@@ -48,3 +48,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // The gomobile Device Host (Go core for four ABIs). Built by
+    // scripts/build-parley-core-android.sh; the AAR is generated, not tracked.
+    implementation(files("libs/parleycore.aar"))
+}

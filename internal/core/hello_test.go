@@ -12,10 +12,11 @@ import (
 	"github.com/wray-lee/parley/internal/providers"
 )
 
-// The byte-level hello comparison: the v0.1 Go hello may add only `protocol`
-// and `tts` to the frozen JavaScript oracle hello. The fixture is the JSON the
-// JS core emitted for the canonical registry (spec/fixtures/hello-v0.0.3.json).
-func TestHelloAddsOnlyProtocolAndTTS(t *testing.T) {
+// The byte-level hello comparison: the v0.1 Go hello may add only `protocol`,
+// `tts` and `autoTurn` to the frozen JavaScript oracle hello. The fixture is
+// the JSON the JS core emitted for the canonical registry
+// (spec/fixtures/hello-v0.0.3.json).
+func TestHelloAddsOnlyProtocolTTSSAndAutoTurn(t *testing.T) {
 	fixture, err := os.ReadFile("../../spec/fixtures/hello-v0.0.3.json")
 	if err != nil {
 		t.Fatal(err)
@@ -46,9 +47,10 @@ func TestHelloAddsOnlyProtocolAndTTS(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := strings.TrimSuffix(oracle, "}") + `,"protocol":1,"tts":"audio"}`
+	want := strings.TrimSuffix(oracle, "}") +
+		`,"protocol":1,"tts":"audio","autoTurn":{"available":false,"enabled":false}}`
 	if string(got) != want {
-		t.Fatalf("hello bytes differ from the oracle plus the two additive fields\n got: %s\nwant: %s", got, want)
+		t.Fatalf("hello bytes differ from the oracle plus the additive fields\n got: %s\nwant: %s", got, want)
 	}
 
 	systemSession := core.NewSession(core.SessionConfig{

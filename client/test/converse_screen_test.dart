@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:parley/l10n/app_localizations.dart';
 import 'package:parley/l10n/parley_localizations.dart';
 import 'package:parley/model/mode.dart';
 import 'package:parley/platform/first_run_store_api.dart';
@@ -13,7 +14,7 @@ import 'package:parley/ui/converse_screen.dart';
 
 import 'fakes.dart';
 
-Map<String, dynamic> hello({bool demo = false}) => {
+Map<String, dynamic> hello({bool demo = false, bool autoAvailable = false}) => {
   'type': 'hello',
   'pairs': [
     {
@@ -29,6 +30,7 @@ Map<String, dynamic> hello({bool demo = false}) => {
   'packs': <dynamic>[],
   'presetsInUse': <dynamic>[],
   'demo': demo,
+  'autoTurn': {'available': autoAvailable, 'enabled': false},
 };
 
 Map<String, dynamic> segment(
@@ -54,6 +56,7 @@ Future<ListenSession> connectedSession(
   WidgetTester tester,
   FakeTransport transport, {
   bool demo = false,
+  bool autoAvailable = false,
 }) async {
   final session = ListenSession(
     transport: transport,
@@ -62,7 +65,7 @@ Future<ListenSession> connectedSession(
   );
   addTearDown(session.dispose);
   await session.connect();
-  transport.emit(hello(demo: demo));
+  transport.emit(hello(demo: demo, autoAvailable: autoAvailable));
   await tester.pump();
   final pair = session.pairs.first;
   session
@@ -77,8 +80,13 @@ Future<ListenSession> startedSession(
   WidgetTester tester,
   FakeTransport transport, {
   bool withSegments = false,
+  bool autoAvailable = false,
 }) async {
-  final session = await connectedSession(tester, transport);
+  final session = await connectedSession(
+    tester,
+    transport,
+    autoAvailable: autoAvailable,
+  );
   await session.start();
   transport.emit({'type': 'turn', 'who': 'me', 'auto': false});
   if (withSegments) {
@@ -584,6 +592,150 @@ void main() {
     expect(find.byKey(const Key('converse-first-use')), findsNothing);
   });
 
+  testWidgets('an incapable Provider shows Manual and the Auto Turn note', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final session = await startedSession(tester, transport);
+    await pumpConverse(tester, session);
+
+    // The header sits inside my half, which follows zh.
+    final l10n = AppLocalizations.of(
+      tester.element(find.byKey(const Key('half-me'))),
+    );
+    expect(find.byKey(const Key('converse-auto-note')), findsOneWidget);
+    expect(find.byKey(const Key('converse-auto-label')), findsOneWidget);
+    expect(find.text(l10n.converseManual), findsOneWidget);
+    final toggle = tester.widget<TextButton>(
+      find.byKey(const Key('converse-auto-toggle')),
+    );
+    expect(toggle.onPressed, isNull);
+    expect(session.autoTurnEnabled, isFalse);
+  });
+
+  testWidgets('the Auto Turn note stays visible in short landscape', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final session = await startedSession(tester, transport);
+    // 1.3x is the largest scale the banners allow; the halves must still fit
+    // the note and two 48 px Turn pads.
+    await pumpConverse(
+      tester,
+      session,
+      size: const Size(780, 360),
+      textScale: 1.3,
+    );
+
+    expect(find.byKey(const Key('converse-auto-note')), findsOneWidget);
+    for (final who in ['me', 'them']) {
+      final pad = tester.getRect(find.byKey(Key('pad-$who')));
+      expect(pad.height, greaterThanOrEqualTo(48), reason: who);
+      expect(pad.width, greaterThanOrEqualTo(48), reason: who);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Auto is opt-in and the chip shows the detected language', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final session = await startedSession(
+      tester,
+      transport,
+      autoAvailable: true,
+    );
+    await pumpConverse(tester, session);
+
+    // The toggle sits inside my half, which follows zh; the chip sits inside
+    // them's half, which follows ja.
+    final l10n = AppLocalizations.of(
+      tester.element(find.byKey(const Key('half-me'))),
+    );
+    final themL10n = AppLocalizations.of(
+      tester.element(find.byKey(const Key('half-them'))),
+    );
+    expect(find.byKey(const Key('converse-auto-note')), findsNothing);
+    expect(find.text(l10n.converseManual), findsOneWidget);
+    await tester.tap(find.byKey(const Key('converse-auto-toggle')));
+    await tester.pump();
+    expect(session.autoTurnEnabled, isTrue);
+    expect(find.text(l10n.converseAuto), findsOneWidget);
+
+    transport.emit({
+      'type': 'turn',
+      'who': 'them',
+      'auto': true,
+      'language': 'ja',
+    });
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const Key('auto-chip-them')), findsOneWidget);
+    expect(find.byKey(const Key('auto-chip-me')), findsNothing);
+    final chip = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('auto-chip-them')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(chip.data, startsWith('${themL10n.converseAuto} ·'));
+  });
+
+  testWidgets('an undecided Auto Turn pulses the pads for 250 ms with a haptic', (
+    tester,
+  ) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        calls.add(call);
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    final transport = FakeTransport();
+    final session = await startedSession(
+      tester,
+      transport,
+      autoAvailable: true,
+    );
+    await pumpConverse(tester, session);
+    session.setAutoTurn(true);
+    await tester.pump();
+
+    transport.emit({
+      'type': 'turn',
+      'who': 'me',
+      'auto': true,
+      'uncertain': true,
+    });
+    await tester.pump();
+    await tester.pump();
+
+    final pad = tester.widget<AnimatedContainer>(
+      find.byKey(const Key('pad-surface-them')),
+    );
+    final border = (pad.decoration! as BoxDecoration).border! as Border;
+    expect(border.top.width, 2);
+    expect(
+      calls.any((call) => call.method == 'HapticFeedback.vibrate'),
+      isTrue,
+    );
+
+    await tester.pump(const Duration(milliseconds: 300));
+    final cleared = tester.widget<AnimatedContainer>(
+      find.byKey(const Key('pad-surface-them')),
+    );
+    final clearedBorder =
+        (cleared.decoration! as BoxDecoration).border! as Border;
+    expect(clearedBorder.top.width, 1);
+  });
+
   testWidgets('goldens: split and stacked Converse', (tester) async {
     final transport = FakeTransport();
     final session = await startedSession(tester, transport, withSegments: true);
@@ -599,6 +751,29 @@ void main() {
     await expectLater(
       find.byType(ConverseScreen),
       matchesGoldenFile('goldens/converse_stacked.png'),
+    );
+  });
+
+  testWidgets('goldens: Auto chip with the detected language', (tester) async {
+    final transport = FakeTransport();
+    final session = await startedSession(
+      tester,
+      transport,
+      autoAvailable: true,
+    );
+    await pumpConverse(tester, session);
+    session.setAutoTurn(true);
+    transport.emit({
+      'type': 'turn',
+      'who': 'them',
+      'auto': true,
+      'language': 'ja',
+    });
+    await tester.pump();
+    await tester.pump();
+    await expectLater(
+      find.byType(ConverseScreen),
+      matchesGoldenFile('goldens/converse_auto.png'),
     );
   });
 }

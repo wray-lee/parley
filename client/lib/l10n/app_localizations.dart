@@ -226,6 +226,24 @@ abstract class AppLocalizations {
   /// **'Mic paused while speaking'**
   String get converseMicPaused;
 
+  /// No description provided for @converseAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto'**
+  String get converseAuto;
+
+  /// No description provided for @converseManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual'**
+  String get converseManual;
+
+  /// No description provided for @converseAutoUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto Turn needs a provider and pair that passed language-tag checks. Use the pads.'**
+  String get converseAutoUnavailable;
+
   /// No description provided for @captionsEmpty.
   ///
   /// In en, this message translates to:

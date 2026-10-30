@@ -22,6 +22,10 @@ type pendingSegment struct {
 	direction   *Direction
 	finalizedAt int64
 	heldAt      int64
+	// Auto Turn provenance for the Segment log.
+	turnAuto     bool
+	turnOverride bool
+	detected     string
 }
 
 // HoldPolicy tracks the Held Segment.

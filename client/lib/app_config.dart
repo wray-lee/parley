@@ -1,18 +1,25 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 /// Server endpoint settings. Both values are injectable at build or launch
-/// time, so no host URL or token lives in the UI or in tracked files.
+/// time, so no host URL or token lives in the UI or in tracked files. An empty
+/// PARLEY_URL on a native build selects the embedded Device Host.
 class AppConfig {
   const AppConfig({required this.baseUrl, this.token = ''});
 
   factory AppConfig.fromEnvironment() => const AppConfig(
     baseUrl: String.fromEnvironment(
       'PARLEY_URL',
-      defaultValue: 'http://localhost:3000',
+      // Web always has a Server Host; a native build with no build-time URL
+      // runs the embedded Device Host instead.
+      defaultValue: kIsWeb ? 'http://localhost:3000' : '',
     ),
     token: String.fromEnvironment('PARLEY_TOKEN'),
   );
 
   final String baseUrl;
   final String token;
+
+  bool get hasServer => baseUrl.isNotEmpty;
 
   Uri get baseUri => Uri.parse(baseUrl);
 

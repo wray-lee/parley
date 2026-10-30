@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:parley/model/protocol.dart';
+import 'package:parley/platform/device_host_api.dart';
 import 'package:parley/session/listen_session.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -389,6 +390,34 @@ void main() {
     expect(s.session.error, 'Connection failed.');
     expect(logs.join('\n'), isNot(contains('SECRET123')));
     expect(logs.join('\n'), isNot(contains('ws?token=')));
+  });
+
+  test('a Device Host failure surfaces its redacted message', () async {
+    final s = makeSession();
+    s.transport.connectError = const DeviceHostException(
+      'Azure TTS requires AZURE_SPEECH_REGION (for example eastus).',
+    );
+    await s.session.connect();
+
+    expect(s.session.status, SessionStatus.failed);
+    expect(
+      s.session.error,
+      'Azure TTS requires AZURE_SPEECH_REGION (for example eastus).',
+    );
+  });
+
+  test('a missing native host surfaces its specific message', () async {
+    final s = makeSession();
+    s.transport.connectError = const DeviceHostException(
+      'The on-device host is not available in this build.',
+    );
+    await s.session.connect();
+
+    expect(s.session.status, SessionStatus.failed);
+    expect(
+      s.session.error,
+      'The on-device host is not available in this build.',
+    );
   });
 
   test('a lost connection surfaces a generic, token-free error', () async {

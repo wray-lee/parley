@@ -80,6 +80,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get converseMicPaused => 'Mic paused while speaking';
 
   @override
+  String get converseAuto => 'Auto';
+
+  @override
+  String get converseManual => 'Manual';
+
+  @override
+  String get converseAutoUnavailable =>
+      'Auto Turn needs a provider and pair that passed language-tag checks. Use the pads.';
+
+  @override
   String get captionsEmpty => 'Captions land here.';
 
   @override

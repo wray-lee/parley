@@ -6,12 +6,35 @@ import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import mobile.Mobile
 
 class MainActivity : FlutterActivity() {
     private var pending: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Device Host channel: the Go core runs in this process and serves the
+        // wire protocol on loopback. The config JSON holds Provider keys; it is
+        // passed straight to Go and never logged.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CORE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> try {
+                        result.success(Mobile.start(call.arguments as? String ?: ""))
+                    } catch (error: Throwable) {
+                        result.error(
+                            "start",
+                            error.message ?: "The on-device host could not start.",
+                            null,
+                        )
+                    }
+                    "stop" -> {
+                        Mobile.stop()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 if (call.method != "request") {
@@ -48,6 +71,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private companion object {
+        const val CORE_CHANNEL = "app.parley/core"
         const val CHANNEL = "app.parley/local_network"
         const val REQUEST = 4711
     }

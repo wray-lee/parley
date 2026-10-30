@@ -36,6 +36,38 @@ type ASREvent struct {
 	// ignores them; contract tests compare them with the fixtures.
 	StartMS int64
 	EndMS   int64
+	// Tags are the Provider's per-word language tags for the words in this
+	// Event. Auto Turn aggregates them; the Session never reads the text.
+	Tags []LanguageTag
+}
+
+// LanguageTag is one Provider-reported language for a word/token.
+type LanguageTag struct {
+	Language   string
+	Confidence float64
+}
+
+// LanguageCapability is an ASR adapter's Auto Turn declaration. The zero value
+// means the Provider cannot report streaming language tags.
+type LanguageCapability struct {
+	StreamingLanguageID bool     `json:"streamingLanguageId"`
+	Granularity         string   `json:"languageGranularity,omitempty"`
+	LanguageConfidence  bool     `json:"languageConfidence"`
+	Languages           []string `json:"languages,omitempty"`
+	// ValidatedPairs are the Directions that passed the S3 acceptance run.
+	// A pair must be here even when the Provider reports tags: S3 NO-GO for
+	// Deepgram Nova-3 multi means its list is empty in v0.1.
+	ValidatedPairs []protocol.Direction `json:"validatedPairs,omitempty"`
+}
+
+// AutoASR is the optional seam behind Auto Turn: an ASR that declares
+// pair-capable streaming language tags can open one stream for the pair.
+type AutoASR interface {
+	ASR
+	LanguageCapability() LanguageCapability
+	// OpenAuto opens the Session's one multilingual stream with the pair as
+	// hints; a Turn change never reopens it.
+	OpenAuto(pair protocol.Direction)
 }
 
 // playback is one spoken Segment waiting for its client playback report.
@@ -144,10 +176,16 @@ type Session struct {
 	mockMicErrorSent bool
 
 	// Converse opens one ASR stream per Direction at start and routes audio to
-	// the current Turn's stream.
-	streams map[string]ASR
-	gating  *Gating
-	echo    *EchoFilter
+	// the current Turn's stream. Auto Turn (when available and opted in) opens
+	// one multilingual stream instead and never reopens it on a Turn change.
+	streams       map[string]ASR
+	autoAvailable bool
+	autoEnabled   bool
+	autoStream    bool
+	tags          []LanguageTag
+	turnOverride  bool
+	gating        *Gating
+	echo          *EchoFilter
 	// playbacks tracks spoken Segments from Segment emission until the client
 	// reports the playback ended (or the watchdog releases it).
 	playbacks        map[int]*playback
@@ -227,6 +265,7 @@ func (s *Session) Hello() protocol.Hello {
 		Demo:         s.demo(),
 		Protocol:     1,
 		TTS:          "audio",
+		AutoTurn:     s.autoTurnHello(),
 	}
 	if s.tts.Name() == "system" {
 		hello.TTS = "system"
@@ -266,6 +305,12 @@ func (s *Session) HandleMessage(message protocol.ClientMessage) {
 		s.input = "sample"
 		s.audioMS = 0
 		s.resetAgreement()
+		if s.autoEnabled {
+			if auto, ok := s.asr.(AutoASR); ok {
+				auto.OpenAuto(s.start)
+				return
+			}
+		}
 		s.currentStream().Open(directionRef(s.direction))
 	case "input":
 		if message.Source == "sample" {
@@ -275,6 +320,10 @@ func (s *Session) HandleMessage(message protocol.ClientMessage) {
 		}
 	case "turn":
 		s.setTurn(message.Who, false)
+	case "autoTurn":
+		if message.Enabled != nil {
+			s.setAutoTurn(*message.Enabled)
+		}
 	case "playback":
 		s.handlePlayback(message)
 	case "ptt":
@@ -344,6 +393,8 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 	s.input = "live"
 	s.audioMS = 0
 	s.stable = ""
+	s.tags = nil
+	s.turnOverride = false
 	s.resetAgreement()
 	s.lastSpeechAt = nil
 	s.ptt = false
@@ -354,6 +405,10 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 	s.clearHoldTimer()
 	s.hold.Reset()
 	s.resetPlayback()
+	// Auto Turn is opt-in in v0.1 (S3 no-go); the pair gate is exact.
+	s.autoAvailable = mode == "converse" && s.pairAutoAvailable(s.start)
+	s.autoEnabled = false
+	s.autoStream = false
 	s.openStreams(direction, directions)
 	s.cut = NewCutPolicy(s.pairConfig[direction.Src+"->"+direction.Tgt])
 	s.emit(&protocol.StateEvent{Type: "state", State: "listening"})
@@ -363,9 +418,20 @@ func (s *Session) startMessage(message protocol.ClientMessage) {
 }
 
 // setTurn switches the audio Direction in Converse. A Held Segment never
-// merges into another Turn's Direction, so it is forced now.
+// merges into another Turn's Direction, so it is forced now. In Auto mode a
+// pad tap is a Turn Override: it cancels the pending decision, routes the
+// pending Segment to the tapped Direction and is logged.
 func (s *Session) setTurn(who string, auto bool) {
-	if !s.converse() || s.directions[who] == nil || s.turn == who {
+	if !s.converse() || s.directions[who] == nil {
+		return
+	}
+	if s.autoEnabled {
+		if !auto {
+			s.overrideTurn(who)
+		}
+		return
+	}
+	if s.turn == who {
 		return
 	}
 	// A late final buffered by the outgoing stream belongs to the ended Turn;
@@ -395,9 +461,53 @@ func (s *Session) setTurn(who string, auto bool) {
 	s.emit(&protocol.TurnEvent{Type: "turn", Who: who, Auto: auto})
 }
 
+// overrideTurn is the manual pad tap in Auto: it always wins for the Segment
+// in flight. The one multilingual stream is not reopened.
+func (s *Session) overrideTurn(who string) {
+	s.turnOverride = true
+	s.tags = nil // cancel the pending auto decision
+	s.turn = who
+	s.direction = s.directions[who]
+	s.closeSegment(s.cfg.Clock.Now(), true)
+	s.turnOverride = false // closeSegment captured it for the log
+	s.cut = NewCutPolicy(s.pairConfig[s.direction.Src+"->"+s.direction.Tgt])
+	if s.hold.Held() != nil {
+		s.enqueue(func() error {
+			s.forceHeld()
+			return nil
+		})
+	}
+	s.emit(&protocol.TurnEvent{Type: "turn", Who: who, Override: true})
+}
+
+// setAutoTurn switches the stream architecture. Enabling opens the one
+// multilingual stream; disabling returns to the per-Direction streams.
+func (s *Session) setAutoTurn(enabled bool) {
+	if !s.converse() || enabled == s.autoEnabled {
+		return
+	}
+	if enabled && !s.autoAvailable {
+		return // capability fallback: stay Manual
+	}
+	s.autoEnabled = enabled
+	if !s.running {
+		return
+	}
+	s.closeSegment(s.cfg.Clock.Now(), true)
+	s.closeStreams()
+	s.streams = nil
+	s.autoStream = false
+	s.audioMS = 0
+	s.resetAgreement()
+	s.openStreams(s.directions["me"], s.directions)
+	s.cut = NewCutPolicy(s.pairConfig[s.direction.Src+"->"+s.direction.Tgt])
+}
+
 // maybeAutoSwitch hands the Turn to them once my spoken output has finished.
+// Language-tag Auto Turn replaces this unconditional switch (S3: never stack a
+// second switch on the detections).
 func (s *Session) maybeAutoSwitch() {
-	if !s.converse() || s.turn != "me" || s.ownSpeechPending > 0 {
+	if !s.converse() || s.autoEnabled || s.turn != "me" || s.ownSpeechPending > 0 {
 		return
 	}
 	s.setTurn("them", true)
@@ -413,6 +523,14 @@ func (s *Session) openStreams(direction *Direction, directions map[string]*Direc
 	}
 	s.streams = nil
 	if directions != nil {
+		if s.autoEnabled {
+			if auto, ok := s.asr.(AutoASR); ok {
+				auto.OpenAuto(s.start)
+				s.autoStream = true
+				return
+			}
+		}
+		s.autoStream = false
 		s.streams = make(map[string]ASR)
 		me, them := directions["me"], directions["them"]
 		s.streams[directionKey(me)] = s.asr
@@ -678,7 +796,7 @@ func (s *Session) handleASREvents(events []ASREvent) {
 			if event.Glue != nil {
 				glue = *event.Glue
 			}
-			s.addStable(event.Text, glue)
+			s.addStable(event.Text, glue, event.Tags)
 		}
 	}
 }
@@ -696,7 +814,7 @@ func (s *Session) handlePartial(text string) {
 		s.lastHypothesis = text
 		if stable != "" {
 			s.committedPrefix = common
-			s.addStable(stable, "") // successive prefixes of one hypothesis
+			s.addStable(stable, "", nil) // successive prefixes of one hypothesis
 		}
 	}
 	s.emit(&protocol.ASAPartialEvent{Type: "asr_partial", Text: text, Direction: directionRef(s.direction)})
@@ -711,13 +829,16 @@ func commonPrefix(a, b string) string {
 	return string(left[:index])
 }
 
-func (s *Session) addStable(text, glue string) {
+func (s *Session) addStable(text, glue string, tags []LanguageTag) {
 	if text == "" {
 		return
 	}
 	if s.input == "live" && s.echo.IsEcho(text, s.cfg.Clock.Now()) {
 		s.echoSuspects++
-		return
+		return // the echoed text and its tags are not this speaker's
+	}
+	if s.autoEnabled {
+		s.tags = append(s.tags, tags...)
 	}
 	if s.stable == "" {
 		s.stable = text
@@ -767,8 +888,19 @@ func (s *Session) closeSegment(now int64, utteranceEnd bool) {
 	if s.lastSpeechAt != nil {
 		speechEnd = *s.lastSpeechAt
 	}
+	// The decision rides the result that cut the Segment, so it is a lookup
+	// over tags already in hand: no clock read and no added stage (0 ms T1).
+	provenance := turnProvenance{override: s.turnOverride}
+	s.turnOverride = false
+	if s.autoEnabled && s.autoAvailable && source != "" {
+		decided := turnProvenance{}
+		direction, decided = s.applyAutoTurn(direction)
+		decided.override = provenance.override
+		provenance = decided
+	}
 	s.cut.Reset()
 	s.stable = ""
+	s.tags = nil
 	s.lastSpeechAt = nil
 	if utteranceEnd {
 		s.resetAgreement()
@@ -778,15 +910,17 @@ func (s *Session) closeSegment(now int64, utteranceEnd bool) {
 	}
 	finalizedAt := now
 	s.enqueue(func() error {
-		s.commit(source, speechEnd, direction, finalizedAt)
+		s.commit(source, speechEnd, direction, finalizedAt, provenance)
 		return nil
 	})
 }
 
-func (s *Session) commit(source string, speechEnd int64, direction *Direction, finalizedAt int64) {
+func (s *Session) commit(source string, speechEnd int64, direction *Direction, finalizedAt int64, provenance turnProvenance) {
 	if held := s.hold.Held(); held != nil && sameDirection(directionRef(held.direction), directionRef(direction)) {
 		// A Held Segment is merged with this Cut and retried.
-		s.translate(s.hold.Merge(source, speechEnd, finalizedAt), false)
+		merged := s.hold.Merge(source, speechEnd, finalizedAt)
+		merged.turnAuto, merged.turnOverride, merged.detected = provenance.auto, provenance.override, provenance.language
+		s.translate(merged, false)
 		return
 	}
 	if s.hold.Held() != nil {
@@ -795,6 +929,7 @@ func (s *Session) commit(source string, speechEnd int64, direction *Direction, f
 	}
 	s.translate(&pendingSegment{
 		source: source, speechEnd: speechEnd, direction: direction, finalizedAt: finalizedAt,
+		turnAuto: provenance.auto, turnOverride: provenance.override, detected: provenance.language,
 	}, false)
 }
 
@@ -894,6 +1029,7 @@ func (s *Session) commitSourceOnly(pending *pendingSegment, firstToken *int64, d
 		SegID: segID, Direction: ref, SpeechEnd: pending.speechEnd, ASRFinal: pending.source,
 		ASRFinalAt: &pending.finalizedAt, FirstToken: firstToken,
 		Held: true, Merges: pending.merges, Forced: true, ForcedFail: true, EchoSuspect: s.echoSuspects,
+		TurnAuto: pending.turnAuto, TurnOverride: pending.turnOverride, DetectedLanguage: pending.detected,
 	})
 	s.clearHoldTimer()
 	s.hold.Reset()
@@ -942,6 +1078,7 @@ func (s *Session) commitTranslation(pending *pendingSegment, text string, firstT
 		SegID: segID, Direction: ref, SpeechEnd: pending.speechEnd, ASRFinal: pending.source,
 		ASRFinalAt: &pending.finalizedAt, FirstToken: firstToken, TTSFirstChunk: ttsFirstChunk,
 		Held: pending.held, Merges: pending.merges, Forced: pending.forced, ForcedFail: false, EchoSuspect: s.echoSuspects,
+		TurnAuto: pending.turnAuto, TurnOverride: pending.turnOverride, DetectedLanguage: pending.detected,
 	})
 }
 

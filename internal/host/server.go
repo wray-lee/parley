@@ -31,6 +31,9 @@ type Options struct {
 	// the Device Host's Loopback Host must (ADR-0003). The Server Host leaves
 	// it false because browsers connect with an Origin.
 	RejectOrigin bool
+	// Loopback binds 127.0.0.1 instead of every interface, as the Device Host's
+	// Loopback Host must (ADR-0003). The Server Host leaves it false.
+	Loopback bool
 }
 
 // Server is the Server Host.
@@ -47,13 +50,17 @@ type Server struct {
 	segmentLog        func(protocol.SegmentLog)
 	warn              func(string)
 	rejectOrigin      bool
+	loopback          bool
 	httpServer        *http.Server
 	listener          net.Listener
+
+	connMu sync.Mutex
+	conns  map[*websocket.Conn]struct{}
 }
 
 // New loads and validates the product assets and the Provider selection.
 func New(cfg Config, assets fs.FS, options Options) (*Server, error) {
-	server := &Server{cfg: cfg, assets: assets, segmentLog: options.SegmentLog, warn: options.Warn, rejectOrigin: options.RejectOrigin}
+	server := &Server{cfg: cfg, assets: assets, segmentLog: options.SegmentLog, warn: options.Warn, rejectOrigin: options.RejectOrigin, loopback: options.Loopback, conns: map[*websocket.Conn]struct{}{}}
 	if server.segmentLog == nil {
 		server.segmentLog = func(protocol.SegmentLog) {}
 	}
@@ -149,7 +156,11 @@ func (s *Server) providerConfig(samples *providers.SampleBook) providers.Config 
 
 // Listen binds the configured port (0 means any free port) and serves.
 func (s *Server) Listen() error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.cfg.Port))
+	host := ""
+	if s.loopback {
+		host = "127.0.0.1"
+	}
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, fmt.Sprint(s.cfg.Port)))
 	if err != nil {
 		return err
 	}
@@ -167,14 +178,27 @@ func (s *Server) Port() int {
 	return s.listener.Addr().(*net.TCPAddr).Port
 }
 
-// Close stops the HTTP server and every open Session.
+// Close stops the HTTP server and every open Session. WebSocket connections
+// are hijacked, so Shutdown does not close them: close them explicitly or the
+// next launch could not reuse the port.
 func (s *Server) Close() error {
 	if s.httpServer == nil {
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return s.httpServer.Shutdown(ctx)
+	err := s.httpServer.Shutdown(ctx)
+
+	s.connMu.Lock()
+	conns := make([]*websocket.Conn, 0, len(s.conns))
+	for conn := range s.conns {
+		conns = append(conns, conn)
+	}
+	s.connMu.Unlock()
+	for _, conn := range conns {
+		conn.CloseNow()
+	}
+	return err
 }
 
 // ServeHTTP routes /healthz, /ws and the embedded static client.
@@ -284,6 +308,14 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer conn.CloseNow()
+	s.connMu.Lock()
+	s.conns[conn] = struct{}{}
+	s.connMu.Unlock()
+	defer func() {
+		s.connMu.Lock()
+		delete(s.conns, conn)
+		s.connMu.Unlock()
+	}()
 
 	inputs := make(chan func(), 16)
 	posts := make(chan func(), 16)

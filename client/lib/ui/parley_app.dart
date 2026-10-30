@@ -41,7 +41,7 @@ class ParleyApp extends StatefulWidget {
   State<ParleyApp> createState() => _ParleyAppState();
 }
 
-class _ParleyAppState extends State<ParleyApp> {
+class _ParleyAppState extends State<ParleyApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late final ListenSession _session;
   bool _started = false;
@@ -50,14 +50,24 @@ class _ParleyAppState extends State<ParleyApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _session = widget.createSession();
     _session.connect();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _session.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Foreground-only (S2): leaving the foreground ends the Session so the
+    // microphone and TTS stop at once; the host is stopped by HostLifecycle and
+    // its next hello brings this Session back to ready.
+    if (state == AppLifecycleState.paused) unawaited(_session.stop());
   }
 
   void _start() {

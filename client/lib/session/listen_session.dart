@@ -9,6 +9,7 @@ import '../audio/tts_player_api.dart';
 import '../audio/tts_system.dart';
 import '../model/mode.dart';
 import '../model/protocol.dart';
+import '../platform/device_host_api.dart';
 import '../platform/mic_permission_api.dart';
 import '../transport/transport.dart';
 import 'tts_queue.dart';
@@ -26,6 +27,7 @@ class ListenSession extends ChangeNotifier {
     required TtsPlayer ttsPlayer,
     SystemTtsEngine? systemTtsEngine,
     Uri? serverBase,
+    Uri? Function()? serverBaseProvider,
     Future<DemoClip?> Function()? loadDemoClip,
     Future<List<SampleRef>> Function()? loadSamples,
     http.Client? httpClient,
@@ -34,6 +36,7 @@ class ListenSession extends ChangeNotifier {
        _audio = audio,
        _systemTtsEngine = systemTtsEngine,
        _serverBase = serverBase,
+       _serverBaseProvider = serverBaseProvider,
        _loadDemoClip = loadDemoClip,
        _loadSamples = loadSamples,
        _http = httpClient ?? http.Client(),
@@ -49,6 +52,10 @@ class ListenSession extends ChangeNotifier {
   final AudioCapture _audio;
   final SystemTtsEngine? _systemTtsEngine;
   final Uri? _serverBase;
+
+  /// The Device Host's port and token change on every launch; a provider lets
+  /// the Session read the current `/samples` origin instead of a stale URL.
+  final Uri? Function()? _serverBaseProvider;
   final Future<DemoClip?> Function()? _loadDemoClip;
   final Future<List<SampleRef>> Function()? _loadSamples;
   final http.Client _http;
@@ -99,6 +106,19 @@ class ListenSession extends ChangeNotifier {
   String? turn;
   bool turnAuto = false;
 
+  /// Auto Turn capability from `hello.autoTurn`. False means Manual with the
+  /// visible note; v0.1 ships Manual because no Provider passed S3.
+  bool autoTurnAvailable = false;
+
+  /// The user's opt-in Auto/Manual switch (S3 no-go: never a default).
+  bool autoTurnEnabled = false;
+
+  /// The Provider tag of the last decided Segment, for the Auto chip.
+  String? autoLanguage;
+
+  /// Increments on an undecided Auto Turn; the pads pulse.
+  int padCue = 0;
+
   /// Increments on every Turn change after the first (`turnCueWho` names the
   /// new speaker). The UI cues motion and a haptic off it.
   int turnCue = 0;
@@ -126,15 +146,22 @@ class ListenSession extends ChangeNotifier {
   }
 
   /// A pad tap in Converse: the core selects the Direction that receives audio.
+  /// In Auto it is a Turn Override even on the current pad (it cancels a
+  /// pending switch) and it interrupts my playback.
   void takeTurn(String who) {
-    if (!isConverse || !_isSpeaker(who) || turn == who) return;
+    if (!isConverse || !_isSpeaker(who)) return;
+    if (turn == who && !autoTurnEnabled) return;
+    unawaited(_tts.stop());
     _send({'type': 'turn', 'who': who});
   }
 
   /// Push-to-talk down: the Turn follows the pad, then automatic Cuts suspend.
   void beginPushToTalk(String who) {
     if (!isConverse || !_isSpeaker(who)) return;
-    if (turn != who) _send({'type': 'turn', 'who': who});
+    if (turn != who || autoTurnEnabled) {
+      unawaited(_tts.stop());
+      _send({'type': 'turn', 'who': who});
+    }
     _send({'type': 'ptt', 'state': 'down'});
   }
 
@@ -142,6 +169,15 @@ class ListenSession extends ChangeNotifier {
   void endPushToTalk() {
     if (!isConverse) return;
     _send({'type': 'ptt', 'state': 'up'});
+  }
+
+  /// The Auto/Manual switch. Ignored when the Provider/pair did not pass the
+  /// capability gate, so the UI can never force Auto on a Manual Session.
+  void setAutoTurn(bool enabled) {
+    if (!isConverse || !autoTurnAvailable || autoTurnEnabled == enabled) return;
+    autoTurnEnabled = enabled;
+    _send({'type': 'autoTurn', 'enabled': enabled});
+    _notify();
   }
 
   static bool _isSpeaker(String who) => who == 'me' || who == 'them';
@@ -191,15 +227,27 @@ class ListenSession extends ChangeNotifier {
       _tts.chunk,
       onError: (Object _) => _fail('Connection lost.'),
     );
+    await _connectTransport();
+  }
+
+  /// Maps a transport failure to the banner and reports whether the transport
+  /// is connected. A Device Host message is already redacted; anything else
+  /// can carry the WebSocket URI, token included (web_socket_channel's IO
+  /// backend does), so neither the banner nor the log sees it.
+  Future<bool> _connectTransport() async {
     try {
       await _transport.connect();
+      return true;
+    } on DeviceHostException catch (error) {
+      // The Device Host redacts Provider keys from its messages, so its
+      // specific cause can reach the banner.
+      _fail(error.message);
     } catch (_) {
-      // The exception text can carry the WebSocket URI, token included
-      // (web_socket_channel's IO backend does), so neither the banner nor the
-      // log sees it. Auth and transport failures share one banner; ticket 16
-      // adds the auth message.
+      // Auth and transport failures share one banner; ticket 16 adds the auth
+      // message.
       _fail('Connection failed.');
     }
+    return false;
   }
 
   /// The microphone recovery card's "Open Settings".
@@ -268,6 +316,11 @@ class ListenSession extends ChangeNotifier {
     }
     _starting = true;
     try {
+      // A Settings Save may have restarted the host and failed, leaving the
+      // transport disconnected while this Session still reads `ready`; every
+      // frame below would be dropped. Reconnect first so the user sees the
+      // host's error instead of a silent, dead listening state.
+      if (!await _connectTransport()) return;
       DemoClip? sample;
       if (demo) {
         final sampleId = selectedSampleId ?? 'placeholder';
@@ -306,6 +359,9 @@ class ListenSession extends ChangeNotifier {
       _themDirection = them;
       turn = null;
       turnAuto = false;
+      autoTurnEnabled = false; // opt-in per Session (S3 no-go)
+      autoLanguage = null;
+      padCue = 0;
       turnCue = 0;
       turnCueWho = null;
       _gateTail?.cancel();
@@ -442,6 +498,11 @@ class ListenSession extends ChangeNotifier {
     _themDirection = null;
     turn = null;
     turnAuto = false;
+    final auto = message['autoTurn'];
+    autoTurnAvailable = auto is Map && auto['available'] == true;
+    autoTurnEnabled = autoTurnAvailable && auto['enabled'] == true;
+    autoLanguage = null;
+    padCue = 0;
     _gateTail?.cancel();
     gated = false;
     status = SessionStatus.ready;
@@ -478,7 +539,13 @@ class ListenSession extends ChangeNotifier {
     final previous = turn;
     turn = who;
     turnAuto = message['auto'] == true;
-    debugPrint('PARLEY turn $who auto=$turnAuto');
+    final language = message['language'];
+    if (language is String) autoLanguage = language;
+    if (message['override'] == true) {
+      debugPrint('PARLEY turn override $who');
+    }
+    if (message['uncertain'] == true) padCue++;
+    debugPrint('PARLEY turn $who auto=$turnAuto language=$autoLanguage');
     if (previous != null && previous != who) {
       turnCue++;
       turnCueWho = who;
@@ -601,8 +668,10 @@ class ListenSession extends ChangeNotifier {
   void _send(Map<String, Object?> message) =>
       _transport.sendText(jsonEncode(message));
 
+  Uri? get _base => _serverBaseProvider?.call() ?? _serverBase;
+
   Future<List<SampleRef>> _fetchSamples() async {
-    final base = _serverBase;
+    final base = _base;
     if (base == null) return const [];
     final response = await _http
         .get(base.resolve('/samples/manifest.json'))
@@ -619,7 +688,7 @@ class ListenSession extends ChangeNotifier {
   Future<DemoClip?> _fetchDemoClip() async {
     final loader = _loadDemoClip;
     if (loader != null) return loader();
-    final base = _serverBase;
+    final base = _base;
     if (base == null) return null;
     final sampleId = selectedSampleId ?? 'placeholder';
     if (!RegExp(r'^[a-z0-9-]+$').hasMatch(sampleId)) {

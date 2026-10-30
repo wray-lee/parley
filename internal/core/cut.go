@@ -14,6 +14,9 @@ import (
 type PairConfig struct {
 	ClauseLength int    `json:"clauseLength"`
 	Unit         string `json:"unit"`
+	// AutoTurnConfidenceFloor drops tags below it when the Provider reports
+	// word confidence. 0 disables the floor.
+	AutoTurnConfidenceFloor float64 `json:"autoTurnConfidenceFloor,omitempty"`
 }
 
 const (

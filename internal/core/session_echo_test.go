@@ -43,7 +43,7 @@ func TestConverseEchoSuspectIsDroppedAndExpires(t *testing.T) {
 	}
 	session.beginOwnSpeech(1, "hello world", nil)
 
-	session.addStable("hello world", " ")
+	session.addStable("hello world", " ", nil)
 	if session.echoSuspects != 1 {
 		t.Fatalf("echo_suspect = %d, want 1", session.echoSuspects)
 	}
@@ -53,7 +53,7 @@ func TestConverseEchoSuspectIsDroppedAndExpires(t *testing.T) {
 
 	session.HandleMessage(protocol.ClientMessage{Type: "playback", SegID: 1, State: "end"})
 	clock.now += gatingTailMS
-	session.addStable("hello world", " ")
+	session.addStable("hello world", " ", nil)
 	if session.stable != "hello world" {
 		t.Fatalf("stable = %q, want the match to commit after the tail", session.stable)
 	}

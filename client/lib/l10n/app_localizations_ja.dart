@@ -79,6 +79,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String get converseMicPaused => '発話中はマイクを停止';
 
   @override
+  String get converseAuto => '自動';
+
+  @override
+  String get converseManual => '手動';
+
+  @override
+  String get converseAutoUnavailable =>
+      '自動ターンには言語タグの検証に合格したプロバイダーとペアが必要です。パッドを使ってください。';
+
+  @override
   String get captionsEmpty => '字幕がここに表示されます。';
 
   @override

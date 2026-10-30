@@ -79,6 +79,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get converseMicPaused => '说话时麦克风暂停';
 
   @override
+  String get converseAuto => '自动';
+
+  @override
+  String get converseManual => '手动';
+
+  @override
+  String get converseAutoUnavailable => '自动轮换需要语言标签验证通过的服务商和语言对。请使用两侧按钮。';
+
+  @override
   String get captionsEmpty => '字幕会显示在这里。';
 
   @override

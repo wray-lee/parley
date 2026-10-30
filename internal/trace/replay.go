@@ -31,9 +31,10 @@ type Meta struct {
 	ForcedInstruction string                     `json:"forcedInstruction"`
 	Providers         struct {
 		ASR struct {
-			Name        string `json:"name"`
-			AcceptsLive bool   `json:"acceptsLive"`
-			Revisable   bool   `json:"revisable"`
+			Name               string                   `json:"name"`
+			AcceptsLive        bool                     `json:"acceptsLive"`
+			Revisable          bool                     `json:"revisable"`
+			LanguageCapability *core.LanguageCapability `json:"languageCapability,omitempty"`
 		} `json:"asr"`
 		Translator struct {
 			Name string `json:"name"`
@@ -137,7 +138,7 @@ func Replay(text string) error {
 
 	session := core.NewSession(core.SessionConfig{
 		Providers: core.Providers{
-			ASR:        &traceASR{name: meta.Providers.ASR.Name, acceptsLive: meta.Providers.ASR.AcceptsLive, revisable: meta.Providers.ASR.Revisable, queue: &traceASRQueue{responses: asrResponses}},
+			ASR:        &traceASR{name: meta.Providers.ASR.Name, acceptsLive: meta.Providers.ASR.AcceptsLive, revisable: meta.Providers.ASR.Revisable, capability: meta.Providers.ASR.LanguageCapability, queue: &traceASRQueue{responses: asrResponses}},
 			Translator: &traceTranslator{name: meta.Providers.Translator.Name, calls: translatorCalls, push: push},
 			TTS:        &traceTTS{name: meta.Providers.TTS.Name, responses: ttsResponses, push: push},
 		},
@@ -195,6 +196,16 @@ func decodeASREvents(value any) []core.ASREvent {
 		converted := core.ASREvent{Type: event["type"].(string), Text: event["text"].(string)}
 		if glue, ok := event["glue"].(string); ok {
 			converted.Glue = &glue
+		}
+		if tags, ok := event["tags"].([]any); ok {
+			for _, item := range tags {
+				tag := item.(map[string]any)
+				language, _ := tag["language"].(string)
+				confidence, _ := tag["confidence"].(float64)
+				converted.Tags = append(converted.Tags, core.LanguageTag{
+					Language: language, Confidence: confidence,
+				})
+			}
 		}
 		events = append(events, converted)
 	}
@@ -298,16 +309,24 @@ type traceASR struct {
 	name        string
 	acceptsLive bool
 	revisable   bool
+	capability  *core.LanguageCapability
 	queue       *traceASRQueue
 }
 
-func (a *traceASR) Name() string            { return a.name }
-func (a *traceASR) AcceptsLive() bool       { return a.acceptsLive }
-func (a *traceASR) Revisable() bool         { return a.revisable }
-func (a *traceASR) Open(protocol.Direction) {}
-func (a *traceASR) Close()                  {}
+func (a *traceASR) Name() string                { return a.name }
+func (a *traceASR) AcceptsLive() bool           { return a.acceptsLive }
+func (a *traceASR) Revisable() bool             { return a.revisable }
+func (a *traceASR) Open(protocol.Direction)     {}
+func (a *traceASR) Close()                      {}
+func (a *traceASR) OpenAuto(protocol.Direction) {}
+func (a *traceASR) LanguageCapability() core.LanguageCapability {
+	if a.capability == nil {
+		return core.LanguageCapability{}
+	}
+	return *a.capability
+}
 func (a *traceASR) NewStream() core.ASR {
-	return &traceASR{name: a.name, acceptsLive: a.acceptsLive, revisable: a.revisable, queue: a.queue}
+	return &traceASR{name: a.name, acceptsLive: a.acceptsLive, revisable: a.revisable, capability: a.capability, queue: a.queue}
 }
 
 // Discard keeps the scripted queue: any non-current stream is never pushed, and

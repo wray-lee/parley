@@ -82,6 +82,7 @@ class FakeTtsPlayer implements TtsPlayer {
   final List<String> playedFormats = [];
   Object? error;
   bool disposed = false;
+  int stops = 0;
 
   @override
   Future<void> play(String format, Uint8List data) async {
@@ -92,7 +93,9 @@ class FakeTtsPlayer implements TtsPlayer {
   }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async {
+    stops++;
+  }
 
   @override
   Future<void> dispose() async {

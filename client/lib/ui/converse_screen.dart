@@ -61,12 +61,16 @@ class _ConverseScreenState extends State<ConverseScreen> {
   int _seenCue = 0;
   String? _cueWho;
   Timer? _cueTimer;
+  int _seenPadCue = 0;
+  bool _padsHighlight = false;
+  Timer? _padTimer;
   bool _awake = false;
 
   @override
   void initState() {
     super.initState();
     _seenCue = widget.session.turnCue;
+    _seenPadCue = widget.session.padCue;
     widget.session.addListener(_onSession);
     _syncAwake();
     if (widget.firstRun != null) unawaited(_explainOnce());
@@ -101,6 +105,7 @@ class _ConverseScreenState extends State<ConverseScreen> {
   void dispose() {
     widget.session.removeListener(_onSession);
     _cueTimer?.cancel();
+    _padTimer?.cancel();
     unawaited(_setAwake(false));
     super.dispose();
   }
@@ -123,15 +128,32 @@ class _ConverseScreenState extends State<ConverseScreen> {
   /// a second, plus a haptic. Motion is 250 ms, or none when the OS asks.
   void _onSession() {
     _syncAwake();
-    if (widget.session.turnCue == _seenCue) return;
-    _seenCue = widget.session.turnCue;
-    final who = widget.session.turnCueWho;
-    if (who == null) return;
-    _cueTimer?.cancel();
-    setState(() => _cueWho = who);
-    HapticFeedback.lightImpact();
-    _cueTimer = Timer(const Duration(seconds: 1), () {
-      if (mounted) setState(() => _cueWho = null);
+    if (widget.session.turnCue != _seenCue) {
+      _seenCue = widget.session.turnCue;
+      final who = widget.session.turnCueWho;
+      if (who != null) {
+        _cueTimer?.cancel();
+        setState(() => _cueWho = who);
+        HapticFeedback.lightImpact();
+        _cueTimer = Timer(const Duration(seconds: 1), () {
+          if (mounted) setState(() => _cueWho = null);
+        });
+      }
+    }
+    if (widget.session.padCue != _seenPadCue) {
+      _seenPadCue = widget.session.padCue;
+      _highlightPads();
+    }
+  }
+
+  /// An undecided Auto Turn keeps the Turn and pulses both pads for the 250 ms
+  /// motion token, with a selection haptic.
+  void _highlightPads() {
+    _padTimer?.cancel();
+    setState(() => _padsHighlight = true);
+    HapticFeedback.selectionClick();
+    _padTimer = Timer(_cueDuration(context), () {
+      if (mounted) setState(() => _padsHighlight = false);
     });
   }
 
@@ -165,6 +187,7 @@ class _ConverseScreenState extends State<ConverseScreen> {
         final l10n = AppLocalizations.of(context);
         final banners = [
           if (session.demo) DemoBanner(onUseKeys: widget.onUseKeys),
+          if (!session.autoTurnAvailable) const _AutoTurnNote(),
           if (session.micRecovery != null &&
               session.micRecovery != MicAccess.granted)
             MicRecoveryCard(session: session),
@@ -256,12 +279,21 @@ class _ConverseScreenState extends State<ConverseScreen> {
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final compact = constraints.maxHeight < 300;
+                // Short landscape: the Manual note and the session bar leave
+                // each half too little room for the 64 px pad; 48 is the
+                // accessibility floor for a touch target.
+                final tiny = constraints.maxHeight < 150;
                 return Container(
                   key: Key('half-$who'),
                   decoration: BoxDecoration(
                     border: Border(top: BorderSide(color: colors.hairline)),
                   ),
-                  padding: EdgeInsets.fromLTRB(16, compact ? 8 : 12, 16, 8),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    tiny ? 4 : (compact ? 8 : 12),
+                    16,
+                    tiny ? 4 : 8,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -349,7 +381,8 @@ class _ConverseScreenState extends State<ConverseScreen> {
                         who: who,
                         speaker: speaker,
                         active: active,
-                        size: compact ? 64 : 96,
+                        highlight: _padsHighlight,
+                        size: tiny ? 48 : (compact ? 64 : 96),
                         duration: _cueDuration(context),
                         onTap: () => session.takeTurn(who),
                         onHoldStart: () => session.beginPushToTalk(who),
@@ -375,6 +408,26 @@ class _ConverseScreenState extends State<ConverseScreen> {
   ) {
     final colors = ParleyColors.of(context);
     final l10n = AppLocalizations.of(context);
+    final toggle = TextButton(
+      key: const Key('converse-auto-toggle'),
+      onPressed: widget.session.autoTurnAvailable
+          ? () => widget.session.setAutoTurn(!widget.session.autoTurnEnabled)
+          : null,
+      style: TextButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        minimumSize: const Size(0, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        foregroundColor: widget.session.autoTurnEnabled
+            ? colors.liveText
+            : colors.muted,
+      ),
+      child: Text(
+        widget.session.autoTurnEnabled
+            ? l10n.converseAuto
+            : l10n.converseManual,
+        key: const Key('converse-auto-label'),
+      ),
+    );
     return Row(
       children: [
         Expanded(
@@ -397,10 +450,34 @@ class _ConverseScreenState extends State<ConverseScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: colors.muted, fontSize: 12),
               ),
+              if (widget.session.autoTurnEnabled &&
+                  widget.session.autoLanguage == language)
+                Container(
+                  key: Key('auto-chip-$who'),
+                  margin: const EdgeInsets.only(top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: colors.control,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${l10n.converseAuto} · '
+                    '${languageName(context, language)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: colors.liveText, fontSize: 11),
+                  ),
+                ),
             ],
           ),
         ),
         if (who == 'me') ...[
+          widget.session.autoTurnAvailable
+              ? toggle
+              : Tooltip(
+                  message: l10n.converseAutoUnavailable,
+                  child: toggle,
+                ),
           IconButton(
             key: const Key('converse-settings'),
             tooltip: l10n.settings,
@@ -418,6 +495,7 @@ class _TurnPad extends StatefulWidget {
     required this.who,
     required this.speaker,
     required this.active,
+    required this.highlight,
     required this.size,
     required this.duration,
     required this.onTap,
@@ -428,6 +506,7 @@ class _TurnPad extends StatefulWidget {
   final String who;
   final String speaker;
   final bool active;
+  final bool highlight;
   final double size;
   final Duration duration;
   final VoidCallback onTap;
@@ -481,8 +560,10 @@ class _TurnPadState extends State<_TurnPad> {
               shape: BoxShape.circle,
               color: widget.active ? colors.live : colors.control,
               border: Border.all(
-                color: widget.active ? colors.live : colors.outline,
-                width: 1,
+                color: widget.active || widget.highlight
+                    ? colors.live
+                    : colors.outline,
+                width: widget.highlight && !widget.active ? 2 : 1,
               ),
             ),
             child: Icon(
@@ -602,6 +683,36 @@ class _ErrorBanner extends StatelessWidget {
       color: colors.control,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Text(message, style: TextStyle(color: colors.error, fontSize: 14)),
+    );
+  }
+}
+
+/// The v0.1 Manual fallback: no Provider/pair passed the language-tag gate.
+class _AutoTurnNote extends StatelessWidget {
+  const _AutoTurnNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ParleyColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final short = MediaQuery.sizeOf(context).height < 600;
+    return Container(
+      key: const Key('converse-auto-note'),
+      width: double.infinity,
+      color: colors.control,
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: short ? 2 : 8),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: short ? 14 : 16, color: colors.muted),
+          SizedBox(width: short ? 6 : 8),
+          Expanded(
+            child: Text(
+              l10n.converseAutoUnavailable,
+              style: TextStyle(color: colors.muted, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

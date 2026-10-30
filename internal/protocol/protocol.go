@@ -21,6 +21,8 @@ type ClientMessage struct {
 	Who    string   `json:"who,omitempty"`
 	SegID  int      `json:"seg_id,omitempty"`
 	State  string   `json:"state,omitempty"`
+	// Enabled is the client's Auto Turn switch (autoTurn message).
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // Event is one JSON event the core emits. TTSChunkEvent is sent as a binary
@@ -47,6 +49,12 @@ type TurnEvent struct {
 	Type string `json:"type"`
 	Who  string `json:"who"`
 	Auto bool   `json:"auto"`
+	// Language is the Provider tag that decided an Auto Turn.
+	Language string `json:"language,omitempty"`
+	// Override marks a manual pad tap that cancelled a pending Auto decision.
+	Override bool `json:"override,omitempty"`
+	// Uncertain marks a Segment whose tags did not decide; the pads highlight.
+	Uncertain bool `json:"uncertain,omitempty"`
 }
 
 // HoldEvent reports that a Segment is Held for a later Cut to merge into.
@@ -120,6 +128,10 @@ type SegmentLog struct {
 	Forced        bool      `json:"forced"`
 	ForcedFail    bool      `json:"forced_fail"`
 	EchoSuspect   int       `json:"echo_suspect"`
+	// Turn provenance of an Auto Turn decision (v0.1 additive, Go-only).
+	TurnAuto         bool   `json:"turn_auto,omitempty"`
+	TurnOverride     bool   `json:"turn_override,omitempty"`
+	DetectedLanguage string `json:"detected_language,omitempty"`
 }
 
 // TranslatorRequest is the fixed request shape both cores send to a translator.
@@ -177,6 +189,16 @@ type Hello struct {
 	// TTS is the additive v0.1 field: "system" when the client must speak
 	// Segment text with OS TTS, "audio" when the host streams chunks.
 	TTS string `json:"tts"`
+	// AutoTurn is the additive v0.1 field: capability and state at connection
+	// time. The pair-specific check repeats at start.
+	AutoTurn AutoTurn `json:"autoTurn"`
+}
+
+// AutoTurn reports whether the ASR Provider can carry Auto Turn and whether
+// the client has switched it on. Auto is opt-in in v0.1 (S3 no-go).
+type AutoTurn struct {
+	Available bool `json:"available"`
+	Enabled   bool `json:"enabled"`
 }
 
 // ProviderError carries the kind and fallback the ErrorEvent exposes.

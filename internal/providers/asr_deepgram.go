@@ -4,7 +4,8 @@
 // is stable outright. Stable text is sliced from Deepgram's own transcript, so
 // its spacing and punctuation are the provider's. The adapter emits both event
 // kinds itself, so it must NOT report itself revisable.
-// model/endpoint/auth are config data; no language is hardcoded here.
+// model/endpoint/auth are config data; the multi language set is Provider
+// metadata, not language behaviour.
 
 package providers
 
@@ -46,6 +47,10 @@ type dgWord struct {
 	PunctuatedWord *string  `json:"punctuated_word"`
 	Start          *float64 `json:"start"`
 	End            *float64 `json:"end"`
+	// Nova-3 language=multi reports a language and confidence per word; a
+	// single-language stream leaves Language empty.
+	Language   string   `json:"language"`
+	Confidence *float64 `json:"confidence"`
 }
 
 type dgAlternative struct {
@@ -110,10 +115,43 @@ func (a *deepgramASR) Discard() {
 }
 
 func (a *deepgramASR) Open(direction protocol.Direction) {
+	a.open(direction.Src, nil)
+}
+
+// OpenAuto opens the one multilingual stream for the pair: language=multi with
+// both languages as hints. The hints bias; the adapter still tags out-of-pair
+// words and the core rejects them.
+func (a *deepgramASR) OpenAuto(pair protocol.Direction) {
+	if pair.Src == "" || pair.Tgt == "" {
+		a.mu.Lock()
+		a.raiseLocked(asrError("protocol", "deepgram multi ASR needs both pair languages", fallbackMock))
+		a.mu.Unlock()
+		return
+	}
+	a.open("multi", []string{pair.Src, pair.Tgt})
+}
+
+// LanguageCapability declares the Nova-3 multi tags. S3 found a reproducible
+// cross-Turn language-ID error for zh<->ja, so ValidatedPairs stays empty in
+// v0.1 and Auto Turn stays Manual.
+func (a *deepgramASR) LanguageCapability() core.LanguageCapability {
+	return core.LanguageCapability{
+		StreamingLanguageID: true,
+		Granularity:         "word",
+		LanguageConfidence:  true,
+		Languages:           deepgramMultiLanguages,
+	}
+}
+
+// deepgramMultiLanguages is the part of the multi set this adapter has S3
+// evidence for; extend it from the provider docs when another pair passes.
+var deepgramMultiLanguages = []string{"zh", "ja"}
+
+func (a *deepgramASR) open(language string, hints []string) {
 	ctx, mine := a.begin()
 	a.mu.Lock()
 	a.resetAgreementLocked()
-	if direction.Src == "" {
+	if language == "" {
 		a.raiseLocked(asrError("protocol", "deepgram ASR needs the Direction source language", fallbackMock))
 		a.mu.Unlock()
 		return
@@ -124,7 +162,7 @@ func (a *deepgramASR) Open(direction protocol.Direction) {
 		a.mu.Unlock()
 		return
 	}
-	target, err := deepgramTarget(a.opts, direction.Src)
+	target, err := deepgramTarget(a.opts, language, hints)
 	if err != nil {
 		a.raiseLocked(asrError("unreachable", "Deepgram URL is invalid: "+err.Error(), fallbackMock))
 		a.mu.Unlock()
@@ -142,14 +180,17 @@ func (a *deepgramASR) Open(direction protocol.Direction) {
 		deepgramDialError, deepgramClosedError, deepgramSendError)
 }
 
-func deepgramTarget(options DeepgramOptions, src string) (string, error) {
+func deepgramTarget(options DeepgramOptions, language string, hints []string) (string, error) {
 	target, err := url.Parse(options.URL)
 	if err != nil {
 		return "", err
 	}
 	query := target.Query()
 	query.Set("model", options.Model)
-	query.Set("language", src) // fixed per connection: no auto-detection
+	query.Set("language", language) // fixed per connection: no per-Turn reopen
+	for _, hint := range hints {
+		query.Add("language_hint", hint)
+	}
 	query.Set("interim_results", "true")
 	query.Set("endpointing", strconv.Itoa(options.Endpointing))
 	query.Set("utterance_end_ms", strconv.Itoa(options.UtteranceEndMS))
@@ -284,8 +325,10 @@ func (a *deepgramASR) handleResultsLocked(message *dgMessage) {
 		// CloseStream cannot repeat words interims already made stable.
 		if a.emittedChars < len(transcript) {
 			glue := ""
-			event := deepgramSpan(dgFrom(words, a.emitted), fallback)
+			fresh := dgFrom(words, a.emitted)
+			event := deepgramSpan(fresh, fallback)
 			event.Type, event.Text, event.Glue = "stable", transcript[a.emittedChars:], &glue
+			event.Tags = deepgramTags(fresh)
 			a.deliverLocked(event)
 			a.emittedChars = len(transcript)
 		}
@@ -337,6 +380,7 @@ func (a *deepgramASR) emitStableLocked(words []dgWord, text string, count int, f
 	}
 	event := deepgramSpan(fresh, fallback)
 	event.Type, event.Text, event.Glue = "stable", delta, &glue
+	event.Tags = deepgramTags(fresh)
 	a.deliverLocked(event)
 	a.emitted = count
 	if ok {
@@ -424,6 +468,29 @@ func deepgramSpan(words []dgWord, fallback core.ASREvent) core.ASREvent {
 		event.EndMS = milliseconds(words[len(words)-1].End, fallback.EndMS)
 	}
 	return event
+}
+
+// deepgramTags keeps the Provider's per-word language for non-punctuation
+// words. Content words are approximated by non-punctuation tokens, as in S3;
+// punctuation carries no evidence about the speaker.
+func deepgramTags(words []dgWord) []core.LanguageTag {
+	var tags []core.LanguageTag
+	for _, word := range words {
+		if word.Language == "" {
+			continue
+		}
+		if strings.TrimFunc(dgTextOf(word), func(r rune) bool {
+			return unicode.IsPunct(r) || unicode.IsSpace(r)
+		}) == "" {
+			continue
+		}
+		tag := core.LanguageTag{Language: word.Language}
+		if word.Confidence != nil {
+			tag.Confidence = *word.Confidence
+		}
+		tags = append(tags, tag)
+	}
+	return tags
 }
 
 func milliseconds(seconds *float64, fallback int64) int64 {

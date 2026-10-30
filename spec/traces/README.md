@@ -25,7 +25,10 @@ Provider errors and stay replayable. Binary data (TTS audio) is encoded as
 
 `meta.registry` is the resolved registry (`directions`, `packs`, `pairs`), not
 file names, so a replay needs no filesystem. `meta.providers` carries only the
-names and flags a replay needs to reconstruct the fake Providers.
+names and flags a replay needs to reconstruct the fake Providers. An Auto
+Turn-capable ASR also carries `meta.providers.asr.languageCapability`
+(`streamingLanguageId`, `languageGranularity`, `languageConfidence`,
+`languages`, `validatedPairs`); without it the replay has no Auto Turn.
 
 `meta.oracle` is `"js"` when absent and `"go"` for traces that record behaviour
 v0.1 deliberately adds and the frozen JavaScript oracle cannot produce (see
@@ -40,7 +43,7 @@ against it; it is a regression golden, not a parity oracle.
 | `audio` | `ms`, `amplitude` | one 16 kHz PCM16 microphone frame; the replay regenerates it |
 | `advance` | `ms` | move the fake clock forward, firing due timers in order |
 | `idle` | — | await the Session queue (`session.idle()`), i.e. flush pending commit work |
-| `asr` | `events` | the scripted ASR response to the preceding `push` |
+| `asr` | `events` | the scripted ASR response to the preceding `push`; a Stable event may carry per-word `tags: [{language, confidence}]` |
 | `translator` | `call`, `chunk` | one chunk yielded by translator call `call` |
 | `tts` | `response` | the scripted TTS response (`format`, `data`) |
 | `provider_error` | `provider`, `error`, `call` (translator only) | the named Provider throws this error on its next call; a translator error follows that call's chunks |
@@ -108,6 +111,19 @@ Current traces:
   Converse: frames are withheld during playback and the 500 ms tail, the
   watchdog releases at `estimateSpeechMs(text) + 1.5 s`, and a client `cancel`
   or `error` also ends the Gate.
+- `converse-auto-turn-flip.jsonl` (`oracle: go`) — Auto Turn with per-word
+  language tags: the first two agreeing `ja` tags decide the Turn at a Segment
+  Cut (`turn {auto: true, language: "ja"}`) with 0 ms added latency, the log
+  carries `turn_auto` and `detected_language`, and the next Segment flips back
+  to `zh`. The Session keeps one multilingual stream across both Turns.
+- `converse-auto-turn-keep.jsonl` (`oracle: go`) — tags that are out of pair,
+  below the confidence floor, or alone keep the Turn and emit
+  `turn {auto: true, uncertain: true}` (the client pulses the pads); an
+  explicit pad tap in Auto emits `turn {override: true}` and logs
+  `turn_override`.
+- `converse-auto-turn-gating.jsonl` (`oracle: go`) — microphone frames during
+  my playback and its 500 ms tail never reach ASR; only the released frame's
+  tags flip the Turn, at its Cut, and both Segments log `detected_language`.
 - `listen-echo.jsonl` — Listen with system TTS: mic frames keep flowing while it
   plays; the app's own words are dropped as an Echo Suspect and the same text
   commits after the tail.

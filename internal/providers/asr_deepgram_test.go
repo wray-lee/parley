@@ -28,10 +28,12 @@ type deepgramFixture struct {
 		AtMS int64           `json:"atMs"`
 		Data json.RawMessage `json:"data"`
 	} `json:"frames"`
-	ExpectedStableText     string     `json:"expectedStableText"`
-	SampleTranscript       string     `json:"sampleTranscript"`
-	RecognitionCorrections [][]string `json:"recognitionCorrections"`
-	CloseAfterFrame        int        `json:"closeAfterFrame"`
+	ExpectedStableText     string             `json:"expectedStableText"`
+	SampleTranscript       string             `json:"sampleTranscript"`
+	RecognitionCorrections [][]string         `json:"recognitionCorrections"`
+	LanguageHints          []string           `json:"languageHints"`
+	ExpectedLanguageTags   []core.LanguageTag `json:"expectedLanguageTags"`
+	CloseAfterFrame        int                `json:"closeAfterFrame"`
 	Handshake              struct {
 		Status int `json:"status"`
 	} `json:"handshake"`
@@ -415,5 +417,102 @@ func TestDeepgramContractStableFallbackTreatsAllWhitespaceAsSpace(t *testing.T) 
 		if len(events) != 1 || events[0].Text != "p q" {
 			t.Fatalf("stable text for transcript %q = %+v, want %q", text, events, "p q")
 		}
+	}
+}
+
+func TestDeepgramMultiCaptureCarriesPerWordLanguageTags(t *testing.T) {
+	fixture := loadDeepgramFixture(t, "live-multi-zh-ja")
+	transport := &fakeTransport{}
+	asr := NewDeepgramASR(DeepgramOptions{
+		APIKey:         fixture.Auth.Key,
+		Model:          fixture.Options.Model,
+		Endpointing:    fixture.Options.Endpointing,
+		UtteranceEndMS: fixture.Options.UtteranceEndMS,
+		dial:           transport.dial,
+	})
+	asr.OpenAuto(protocol.Direction{Src: fixture.Direction.Src, Tgt: fixture.Direction.Tgt})
+	waitOpened(t, &asr.socketASR)
+
+	target, _, _ := transport.attempt(t)
+	parsed, err := url.Parse(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parsed.Query().Get("language"); got != "multi" {
+		t.Fatalf("language = %q, want multi", got)
+	}
+	hints := parsed.Query()["language_hint"]
+	if len(hints) != len(fixture.LanguageHints) {
+		t.Fatalf("language_hint = %v, want %v", hints, fixture.LanguageHints)
+	}
+	for index, hint := range fixture.LanguageHints {
+		if hints[index] != hint {
+			t.Fatalf("language_hint = %v, want %v", hints, fixture.LanguageHints)
+		}
+	}
+
+	var events []core.ASREvent
+	for _, frame := range fixture.Frames {
+		asr.receive(frame.Data)
+		batch, err := asr.Push(nil, frame.AtMS)
+		if err != nil {
+			t.Fatalf("push at %d ms: %v", frame.AtMS, err)
+		}
+		events = append(events, batch...)
+	}
+	if text := deepgramStableText(events); text != fixture.ExpectedStableText {
+		t.Fatalf("stable text = %q, want %q", text, fixture.ExpectedStableText)
+	}
+
+	var tags []core.LanguageTag
+	for _, event := range events {
+		if event.Type == "stable" {
+			tags = append(tags, event.Tags...)
+		}
+	}
+	if len(tags) != len(fixture.ExpectedLanguageTags) {
+		t.Fatalf("tags = %+v, want %+v", tags, fixture.ExpectedLanguageTags)
+	}
+	for index, want := range fixture.ExpectedLanguageTags {
+		if tags[index] != want {
+			t.Fatalf("tag %d = %+v, want %+v", index, tags[index], want)
+		}
+	}
+}
+
+func TestDeepgramDeclaresMultiButNoValidatedPair(t *testing.T) {
+	asr := NewDeepgramASR(DeepgramOptions{})
+	capability := asr.LanguageCapability()
+	if !capability.StreamingLanguageID || capability.Granularity != "word" || !capability.LanguageConfidence {
+		t.Fatalf("capability = %+v", capability)
+	}
+	for _, language := range []string{"zh", "ja"} {
+		found := false
+		for _, supported := range capability.Languages {
+			found = found || supported == language
+		}
+		if !found {
+			t.Fatalf("languages = %v, missing %s", capability.Languages, language)
+		}
+	}
+	// S3 NO-GO: the adapter must not claim a passing pair in v0.1.
+	if len(capability.ValidatedPairs) != 0 {
+		t.Fatalf("validated pairs = %+v, want none until S3 passes", capability.ValidatedPairs)
+	}
+}
+
+func TestDeepgramTagsSkipPunctuation(t *testing.T) {
+	confidence := 0.9
+	word := func(text string, language string) dgWord {
+		return dgWord{Word: &text, Language: language, Confidence: &confidence}
+	}
+	tags := deepgramTags([]dgWord{
+		word("hello", "zh"),
+		word("，", "zh"),
+		word("world", "ja"),
+		word("", "ja"),
+	})
+	if len(tags) != 2 || tags[0].Language != "zh" || tags[1].Language != "ja" {
+		t.Fatalf("tags = %+v, want the two words only", tags)
 	}
 }

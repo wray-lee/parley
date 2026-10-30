@@ -88,6 +88,17 @@ func (a *recordingASR) AcceptsLive() bool                 { return a.inner.Accep
 func (a *recordingASR) Revisable() bool                   { return a.inner.Revisable() }
 func (a *recordingASR) Open(direction protocol.Direction) { a.inner.Open(direction) }
 func (a *recordingASR) Close()                            { a.inner.Close() }
+func (a *recordingASR) OpenAuto(pair protocol.Direction) {
+	if auto, ok := a.inner.(core.AutoASR); ok {
+		auto.OpenAuto(pair)
+	}
+}
+func (a *recordingASR) LanguageCapability() core.LanguageCapability {
+	if auto, ok := a.inner.(core.AutoASR); ok {
+		return auto.LanguageCapability()
+	}
+	return core.LanguageCapability{}
+}
 func (a *recordingASR) NewStream() core.ASR {
 	return &recordingASR{inner: a.inner.NewStream(), rec: a.rec}
 }
@@ -106,6 +117,13 @@ func (a *recordingASR) Push(pcm []int16, audioMS int64) ([]core.ASREvent, error)
 		item := map[string]any{"type": event.Type, "text": event.Text}
 		if event.Glue != nil {
 			item["glue"] = *event.Glue
+		}
+		if len(event.Tags) > 0 {
+			tags := make([]map[string]any, 0, len(event.Tags))
+			for _, tag := range event.Tags {
+				tags = append(tags, map[string]any{"language": tag.Language, "confidence": tag.Confidence})
+			}
+			item["tags"] = tags
 		}
 		list = append(list, item)
 	}
@@ -147,9 +165,22 @@ type scriptedStreamASR struct {
 }
 
 type scriptedStreamShared struct {
-	slots   int
-	pushes  []int
-	scripts [][]string
+	slots      int
+	pushes     []int
+	scripts    [][]core.ASREvent
+	capability core.LanguageCapability
+	autoOpens  int
+}
+
+func (a *scriptedStreamASR) LanguageCapability() core.LanguageCapability {
+	return a.shared.capability
+}
+
+func (a *scriptedStreamASR) OpenAuto(protocol.Direction) {
+	a.shared.autoOpens++
+	for len(a.shared.pushes) <= a.slot {
+		a.shared.pushes = append(a.shared.pushes, 0)
+	}
 }
 
 func (a *scriptedStreamASR) Name() string      { return a.name }
@@ -172,11 +203,11 @@ func (a *scriptedStreamASR) Push([]int16, int64) ([]core.ASREvent, error) {
 	if a.slot >= len(a.shared.scripts) || push >= len(a.shared.scripts[a.slot]) {
 		return nil, nil
 	}
-	text := a.shared.scripts[a.slot][push]
-	if text == "" {
+	event := a.shared.scripts[a.slot][push]
+	if event.Type == "" {
 		return nil, nil
 	}
-	return []core.ASREvent{{Type: "stable", Text: text}}, nil
+	return []core.ASREvent{event}, nil
 }
 
 type systemTTS struct{}
@@ -240,6 +271,24 @@ func putUint32(dst []byte, value uint32) {
 }
 
 func newRecordSession(t *testing.T, name string, tts core.TTS, scripts [][]string, answers [][]string) (*traceRecorder, *core.Session) {
+	return newAutoRecordSession(t, name, tts, core.LanguageCapability{}, textScripts(scripts), nil, answers)
+}
+
+func textScripts(scripts [][]string) [][]core.ASREvent {
+	events := make([][]core.ASREvent, len(scripts))
+	for slot, pushes := range scripts {
+		events[slot] = make([]core.ASREvent, len(pushes))
+		for push, text := range pushes {
+			if text != "" {
+				events[slot][push] = core.ASREvent{Type: "stable", Text: text}
+			}
+		}
+	}
+	return events
+}
+
+func newAutoRecordSession(t *testing.T, name string, tts core.TTS, capability core.LanguageCapability,
+	scripts [][]core.ASREvent, pairConfig map[string]core.PairConfig, answers [][]string) (*traceRecorder, *core.Session) {
 	t.Helper()
 	registry, err := core.LoadRegistry(parley.Assets, func(string) {})
 	if err != nil {
@@ -249,18 +298,27 @@ func newRecordSession(t *testing.T, name string, tts core.TTS, scripts [][]strin
 	if err != nil {
 		t.Fatalf("forced instruction: %v", err)
 	}
+	if pairConfig == nil {
+		pairConfig = map[string]core.PairConfig{}
+	}
 	clock := newFakeClock(1000)
 	rec := &traceRecorder{t: t, clock: clock}
-	innerASR := &scriptedStreamASR{name: "scripted", shared: &scriptedStreamShared{scripts: scripts}}
+	innerASR := &scriptedStreamASR{name: "scripted", shared: &scriptedStreamShared{
+		scripts: scripts, capability: capability,
+	}}
 	asr := &recordingASR{inner: innerASR, rec: rec}
 	translator := &recordingTranslator{inner: &dummyTranslator{}, rec: rec, answers: answers}
 	tts = &recordingTTS{inner: tts, rec: rec}
+	asrMeta := map[string]any{"name": asr.Name(), "acceptsLive": asr.AcceptsLive(), "revisable": asr.Revisable()}
+	if capability.StreamingLanguageID {
+		asrMeta["languageCapability"] = capability
+	}
 	rec.lines = append(rec.lines, map[string]any{
 		"type": "meta", "format": 2, "name": name, "oracle": "go", "clockStart": clock.Now(),
-		"registry": registry, "pairConfig": map[string]core.PairConfig{},
+		"registry": registry, "pairConfig": pairConfig,
 		"forcedInstruction": strings.TrimSpace(string(forced)),
 		"providers": map[string]any{
-			"asr":        map[string]any{"name": asr.Name(), "acceptsLive": asr.AcceptsLive(), "revisable": asr.Revisable()},
+			"asr":        asrMeta,
 			"translator": map[string]any{"name": translator.Name()},
 			"tts":        map[string]any{"name": tts.Name()},
 		},
@@ -269,6 +327,7 @@ func newRecordSession(t *testing.T, name string, tts core.TTS, scripts [][]strin
 		Providers:         core.Providers{ASR: asr, Translator: translator, TTS: tts},
 		Clock:             clock,
 		Registry:          registry,
+		PairConfig:        pairConfig,
 		ForcedInstruction: strings.TrimSpace(string(forced)),
 		Emit:              func(event protocol.Event) { rec.output("event", map[string]any{"event": event}) },
 		Log:               func(record protocol.SegmentLog) { rec.output("log", map[string]any{"record": record}) },
@@ -421,6 +480,154 @@ func TestRecordListenNeverGatesTrace(t *testing.T) {
 	rec.idle()
 
 	got := rec.finish(name)
+	path := "../../spec/traces/" + name + ".jsonl"
+	if os.Getenv("PARLEY_RECORD_TRACES") == "1" {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatalf("write trace: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read trace: %v (run PARLEY_RECORD_TRACES=1 go test ./internal/trace -run TestRecord)", err)
+	}
+	if string(got) != strings.ReplaceAll(string(want), "\r\n", "\n") {
+		t.Fatalf("recorded trace drifted; rerun with PARLEY_RECORD_TRACES=1\n%s", firstLineDiff(string(got), string(want)))
+	}
+}
+
+func traceTag(language string, confidence float64) core.LanguageTag {
+	return core.LanguageTag{Language: language, Confidence: confidence}
+}
+
+func traceTagged(text string, tags ...core.LanguageTag) core.ASREvent {
+	return core.ASREvent{Type: "stable", Text: text, Tags: tags}
+}
+
+func autoTraceCapability() core.LanguageCapability {
+	return core.LanguageCapability{
+		StreamingLanguageID: true,
+		Granularity:         "word",
+		LanguageConfidence:  true,
+		Languages:           []string{"zh", "ja"},
+		ValidatedPairs: []protocol.Direction{
+			{Src: "zh", Tgt: "ja"}, {Src: "ja", Tgt: "zh"},
+		},
+	}
+}
+
+// TestRecordConverseAutoTurnFlipTrace records the tag-driven Turn flip at a
+// Cut, in both directions, on the one multilingual stream. The decision rides
+// the cutting result: the segment is emitted on the same idle tick.
+func TestRecordConverseAutoTurnFlipTrace(t *testing.T) {
+	const name = "converse-auto-turn-flip"
+	rec, _ := newAutoRecordSession(t, name, systemTTS{}, autoTraceCapability(),
+		[][]core.ASREvent{{
+			traceTagged("their words", traceTag("ja", 0.9), traceTag("ja", 0.9)),
+			traceTagged("my words", traceTag("zh", 0.9), traceTag("zh", 0.9)),
+		}},
+		map[string]core.PairConfig{},
+		[][]string{{"their translation"}, {"my translation"}},
+	)
+
+	rec.client(protocol.ClientMessage{Type: "start", Mode: "converse", Src: "zh", Tgt: "ja"})
+	enabled := true
+	rec.client(protocol.ClientMessage{Type: "autoTurn", Enabled: &enabled})
+
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "down"})
+	rec.audio(20, 0.2)
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "up"})
+	rec.idle()
+
+	// The Segment was them, so only subtitles follow; no Gating to end.
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "down"})
+	rec.audio(20, 0.2)
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "up"})
+	rec.idle()
+
+	rec.finishAutoTrace(t, name)
+}
+
+// TestRecordConverseAutoTurnKeepTrace records every undecided case (out of
+// pair, confidence floor, short) plus a manual Turn Override on a pending
+// decision.
+func TestRecordConverseAutoTurnKeepTrace(t *testing.T) {
+	const name = "converse-auto-turn-keep"
+	rec, _ := newAutoRecordSession(t, name, systemTTS{}, autoTraceCapability(),
+		[][]core.ASREvent{{
+			traceTagged("far away", traceTag("fr", 0.9), traceTag("fr", 0.9)),
+			traceTagged("quiet", traceTag("ja", 0.5), traceTag("ja", 0.5)),
+			traceTagged("lonely", traceTag("ja", 0.9)),
+			traceTagged("pending switch", traceTag("ja", 0.9), traceTag("ja", 0.9)),
+		}},
+		map[string]core.PairConfig{
+			"zh->ja": {ClauseLength: 1000, Unit: "char", AutoTurnConfidenceFloor: 0.8},
+			"ja->zh": {ClauseLength: 1000, Unit: "char", AutoTurnConfidenceFloor: 0.8},
+		},
+		[][]string{{"one"}, {"two"}, {"three"}, {"override"}},
+	)
+
+	rec.client(protocol.ClientMessage{Type: "start", Mode: "converse", Src: "zh", Tgt: "ja"})
+	enabled := true
+	rec.client(protocol.ClientMessage{Type: "autoTurn", Enabled: &enabled})
+
+	for index := 0; index < 3; index++ {
+		rec.client(protocol.ClientMessage{Type: "ptt", State: "down"})
+		rec.audio(20, 0.2)
+		rec.client(protocol.ClientMessage{Type: "ptt", State: "up"})
+		rec.idle()
+		rec.client(protocol.ClientMessage{Type: "playback", SegID: index + 1, State: "end"})
+		rec.advance(520)
+	}
+
+	// Tags say them, but the user taps the current pad before the Cut.
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "down"})
+	rec.audio(20, 0.2)
+	rec.client(protocol.ClientMessage{Type: "turn", Who: "me"})
+	rec.idle()
+
+	rec.finishAutoTrace(t, name)
+}
+
+// TestRecordConverseAutoTurnGatingTrace records that the Gate is unchanged:
+// frames while own playback is pending never reach ASR, and the first released
+// frame is what can flip the Turn.
+func TestRecordConverseAutoTurnGatingTrace(t *testing.T) {
+	const name = "converse-auto-turn-gating"
+	rec, _ := newAutoRecordSession(t, name, systemTTS{}, autoTraceCapability(),
+		[][]core.ASREvent{{
+			traceTagged("mine", traceTag("zh", 0.9), traceTag("zh", 0.9)),
+			traceTagged("theirs", traceTag("ja", 0.9), traceTag("ja", 0.9)),
+		}},
+		map[string]core.PairConfig{},
+		[][]string{{"mine"}, {"theirs"}},
+	)
+
+	rec.client(protocol.ClientMessage{Type: "start", Mode: "converse", Src: "zh", Tgt: "ja"})
+	enabled := true
+	rec.client(protocol.ClientMessage{Type: "autoTurn", Enabled: &enabled})
+
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "down"})
+	rec.audio(20, 0.2)
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "up"})
+	rec.idle() // my Segment speaks; the Gate starts
+
+	rec.audio(20, 0.2) // withheld: playback pending
+	rec.advance(20)
+	rec.client(protocol.ClientMessage{Type: "playback", SegID: 1, State: "end"})
+	rec.advance(499)
+	rec.audio(20, 0.2) // withheld: the 500 ms tail
+	rec.advance(1)
+	rec.audio(20, 0.2) // released: their speech reaches ASR
+	rec.client(protocol.ClientMessage{Type: "ptt", State: "up"})
+	rec.idle()
+
+	rec.finishAutoTrace(t, name)
+}
+
+func (r *traceRecorder) finishAutoTrace(t *testing.T, name string) {
+	t.Helper()
+	got := r.finish(name)
 	path := "../../spec/traces/" + name + ".jsonl"
 	if os.Getenv("PARLEY_RECORD_TRACES") == "1" {
 		if err := os.WriteFile(path, got, 0o644); err != nil {

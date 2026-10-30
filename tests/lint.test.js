@@ -5,7 +5,8 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
-const SKIP = new Set(['node_modules', '.git', 'tmp', '.scratch']);
+// Generated outputs (Flutter, Gradle, Tauri) are not project sources.
+const SKIP = new Set(['node_modules', '.git', 'tmp', '.scratch', 'build', '.dart_tool']);
 
 // Bun has no `--check`; its transpiler parses in-process. Node uses --check.
 const transpiler = globalThis.Bun ? new Bun.Transpiler({ loader: 'js' }) : null;

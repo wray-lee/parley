@@ -358,6 +358,22 @@ func caseHello(rawURL string, _ options) error {
 			return fmt.Errorf("hello.tts = %q, want system or audio", tts)
 		}
 	}
+	// Auto Turn is additive: absent, or {available, enabled} booleans. With the
+	// Demo mock Provider nothing is validated, so v0.1 must report Manual.
+	if value, ok := hello["autoTurn"]; ok {
+		auto, ok := value.(map[string]any)
+		if !ok {
+			return fmt.Errorf("hello.autoTurn = %v, want an object", value)
+		}
+		available, okAvailable := auto["available"].(bool)
+		enabled, okEnabled := auto["enabled"].(bool)
+		if !okAvailable || !okEnabled {
+			return fmt.Errorf("hello.autoTurn = %v, want boolean available and enabled", value)
+		}
+		if available || enabled {
+			return fmt.Errorf("hello.autoTurn = %v, want Manual for the mock Provider", value)
+		}
+	}
 	return nil
 }
 

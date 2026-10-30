@@ -177,4 +177,51 @@ void main() {
     expect(audio.started, isTrue);
     expect(find.byKey(const Key('demo-banner')), findsOneWidget);
   });
+
+  testWidgets('leaving the foreground ends the running Session', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final firstRun = FakeFirstRunStore();
+    final audio = FakeAudioCapture();
+    final session = ListenSession(
+      transport: transport,
+      audio: audio,
+      ttsPlayer: FakeTtsPlayer(),
+      loadDemoClip: () async => DemoClip.fromJson({
+        'id': 'placeholder',
+        'duration_ms': 20,
+        'audio': <dynamic>[],
+        'src': 'ja',
+        'tgt': 'zh',
+      }),
+    );
+
+    await tester.pumpWidget(
+      ParleyApp(
+        createSession: () => session,
+        readOnlySettings: true,
+        firstRun: firstRun,
+        showOnboarding: true,
+      ),
+    );
+    await tester.pump();
+    transport.emit({...converseHello(), 'demo': true});
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('onboarding-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('onboarding-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('onboarding-finish')));
+    await tester.pumpAndSettle();
+    expect(audio.started, isTrue);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+
+    expect(audio.started, isFalse);
+    expect(session.status, SessionStatus.stopped);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  });
 }

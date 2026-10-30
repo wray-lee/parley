@@ -19,7 +19,7 @@ How a Session uses a Language Pair — **Listen** (one Direction, user only list
 In Converse, who is currently speaking — **me** or **them**. A Turn selects the Direction that receives audio. It is set by the me/them pads, or by Auto Turn when the ASR Provider supports it.
 
 **Auto Turn**:
-The Converse setting that switches the Turn by the language the ASR Provider tags in its own results, restricted to the two languages of the Language Pair. It is the default only when the selected ASR Provider declares pair-capable streaming language tags; otherwise the pads are Manual and the UI says so.
+The Converse setting that switches the Turn by the language the ASR Provider tags in its own results, restricted to the two languages of the Language Pair. It is opt-in in v0.1 and available only when the selected ASR Provider declares pair-capable streaming language tags (word, token or turn) and has passed the language-ID acceptance run for both Directions; otherwise the pads are Manual and the UI says so.
 
 **Turn Override**:
 A manual me/them tap that sets the Turn for the current Segment, cancels any pending Auto Turn decision and is logged; it always wins.

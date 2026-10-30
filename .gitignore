@@ -4,3 +4,10 @@ tmp/
 .env
 node_modules/
 .claude/
+
+# gomobile Device Host AAR (scripts/build-parley-core-android.sh)
+client/android/app/libs/*.aar
+client/android/app/libs/*.jar
+
+# gomobile Device Host XCFramework (scripts/build-parley-core-ios.sh)
+client/ios/Frameworks/*.xcframework

@@ -2,8 +2,9 @@
 
 Black-box checks that speak only the WebSocket protocol. The normative suite is
 `conformance_test.go` (Go); the same cases run against the Bun Server Host, the
-Go Server Host and, later, the Device Host's loopback URL. `cases.mjs` is the
-frozen v0.0.3 oracle's copy of the first cases and stays until P4, run by
+Go Server Host, and the Device Host's loopback URL (`device_host_test.go` starts
+it in-process through `mobile.Start()`). `cases.mjs` is the frozen v0.0.3
+oracle's copy of the first cases and stays until P4, run by
 `tests/conformance.test.js` under `bun test`.
 
 ## Run against a running host
@@ -16,6 +17,15 @@ go test ./spec/conformance -url ws://127.0.0.1:<port>/ws?token=<token> -origin r
 
 The Go test exits non-zero on any failure and prints `ok - <case>`,
 `skip - <case> (<reason>)` or `FAIL - <case>: <detail>`.
+
+For a Device Host running in an Android app, forward its loopback port and use
+the URL and token from the debug `PARLEY host` log line (release builds do not
+log it):
+
+```sh
+adb forward tcp:<port> tcp:<port>
+go test ./spec/conformance -url "ws://127.0.0.1:<port>/ws?token=<token>" -origin reject
+```
 
 Without `-url` it starts the Go host in process and, when Bun and `node_modules`
 are available, boots the Bun host too and requires the same result for every
