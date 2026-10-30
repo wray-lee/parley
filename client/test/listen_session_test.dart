@@ -142,6 +142,8 @@ void main() {
       'first',
       'second',
     ]);
+    expect(s.session.segments.first.direction?.src, 'zh');
+    expect(s.session.segments.first.direction?.tgt, 'ja');
   });
 
   test(
@@ -408,7 +410,7 @@ void main() {
     expect(logs.join('\n'), isNot(contains('ws?token=')));
   });
 
-  test('a server error is shown with its fallback', () async {
+  test('a server error is shown inline with its fallback', () async {
     final s = makeSession();
     await s.session.connect();
     s.transport.emit({
@@ -420,7 +422,145 @@ void main() {
     });
     await pumpEventQueue();
 
-    expect(s.session.error, contains('Mock ASR only accepts bundled samples.'));
-    expect(s.session.error, contains('Play the bundled sample.'));
+    expect(
+      s.session.inlineError,
+      contains('Mock ASR only accepts bundled samples.'),
+    );
+    expect(s.session.inlineError, contains('Play the bundled sample.'));
+    expect(s.session.error, isNull);
+  });
+
+  test(
+    'a Partial splits into the Stable Prefix and the provisional tail',
+    () async {
+      final s = makeSession();
+      await s.session.connect();
+
+      s.transport.emit({
+        'type': 'asr_partial',
+        'text': '今天天气',
+        'direction': {'src': 'zh', 'tgt': 'ja'},
+      });
+      await pumpEventQueue();
+      expect(s.session.live.text, '今天天气');
+      expect(s.session.live.stable, '');
+      expect(s.session.live.provisional, '今天天气');
+
+      s.transport.emit({
+        'type': 'asr_partial',
+        'text': '今天天气很好',
+        'direction': {'src': 'zh', 'tgt': 'ja'},
+      });
+      await pumpEventQueue();
+      expect(s.session.live.stable, '今天天气');
+      expect(s.session.live.provisional, '很好');
+
+      // A correction drops the agreed prefix back to where the hypotheses
+      // diverge; it never rewrites a committed Segment.
+      s.transport.emit({
+        'type': 'asr_partial',
+        'text': '今明',
+        'direction': {'src': 'zh', 'tgt': 'ja'},
+      });
+      await pumpEventQueue();
+      expect(s.session.live.stable, '今');
+      expect(s.session.live.provisional, '明');
+    },
+  );
+
+  test('a committed Segment clears the live line and the Hold', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit({
+      'type': 'asr_partial',
+      'text': 'まだ話しています',
+      'direction': {'src': 'ja', 'tgt': 'zh'},
+    });
+    s.transport.emit({
+      'type': 'hold',
+      'held': true,
+      'merges': 0,
+      'direction': {'src': 'ja', 'tgt': 'zh'},
+    });
+    await pumpEventQueue();
+    expect(s.session.held, isTrue);
+    expect(s.session.live.isEmpty, isFalse);
+
+    s.transport.emit(segment(1, 'first'));
+    await pumpEventQueue();
+    expect(s.session.held, isFalse);
+    expect(s.session.merges, 0);
+    expect(s.session.live.isEmpty, isTrue);
+    expect(s.session.segments.single.translation, 'first');
+  });
+
+  test('hold reports merges and a later hold:false clears it', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit({
+      'type': 'hold',
+      'held': true,
+      'merges': 2,
+      'direction': {'src': 'ja', 'tgt': 'zh'},
+    });
+    await pumpEventQueue();
+    expect(s.session.merges, 2);
+
+    s.transport.emit({
+      'type': 'hold',
+      'held': false,
+      'merges': 0,
+      'direction': {'src': 'ja', 'tgt': 'zh'},
+    });
+    await pumpEventQueue();
+    expect(s.session.held, isFalse);
+  });
+
+  test('skipLive drops the pending live line until the next Partial', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit({
+      'type': 'asr_partial',
+      'text': 'ちょっと待って',
+      'direction': {'src': 'ja', 'tgt': 'zh'},
+    });
+    await pumpEventQueue();
+    expect(s.session.live.isEmpty, isFalse);
+
+    s.session.skipLive();
+    expect(s.session.live.isEmpty, isTrue);
+
+    s.transport.emit({
+      'type': 'asr_partial',
+      'text': '続けます',
+      'direction': {'src': 'ja', 'tgt': 'zh'},
+    });
+    await pumpEventQueue();
+    expect(s.session.live.text, '続けます');
+  });
+
+  test('a new Partial clears an inline error; earlier Segments stay', () async {
+    final s = makeSession();
+    await s.session.connect();
+    s.transport.emit(segment(1, 'first'));
+    s.transport.emit({
+      'type': 'error',
+      'provider': 'translator',
+      'kind': 'timeout',
+      'message': 'translator request timed out',
+      'fallback': 'Retry or switch preset.',
+    });
+    await pumpEventQueue();
+    expect(s.session.inlineError, contains('timed out'));
+    expect(s.session.segments.single.translation, 'first');
+
+    s.transport.emit({
+      'type': 'asr_partial',
+      'text': 'next',
+      'direction': {'src': 'ja', 'tgt': 'zh'},
+    });
+    await pumpEventQueue();
+    expect(s.session.inlineError, isNull);
+    expect(s.session.segments.single.translation, 'first');
   });
 }

@@ -110,8 +110,9 @@ class _LiveLineState extends State<LiveLine> {
     final colors = ParleyColors.of(context);
     final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
     final caption = widget.caption;
+    final margin = parleyMargin(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: EdgeInsets.fromLTRB(margin, 8, margin, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

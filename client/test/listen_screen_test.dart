@@ -226,7 +226,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('focus mode hides source and chrome, keeps DEMO and awake', (
+  testWidgets('focus mode hides source and chrome, keeps the DEMO banner', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(420, 900);
@@ -247,7 +247,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    expect(awake, [true]);
+    expect(
+      awake,
+      isEmpty,
+      reason: 'the wake lock follows the Session, not Focus mode',
+    );
     expect(find.text('Parley'), findsNothing);
     expect(find.text('Start Listen'), findsNothing);
     expect(find.text('Source 1.'), findsNothing);
@@ -270,8 +274,86 @@ void main() {
 
     await tester.tap(find.byKey(const Key('exit-focus')));
     await tester.pump();
-    expect(awake, [true, false]);
+    expect(awake, isEmpty);
     expect(find.text('Parley'), findsOneWidget);
+  });
+
+  testWidgets('the screen stays awake for the whole Session', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final transport = FakeTransport();
+    final session = await connectedSession(transport);
+    transport.emit({...helloMessage(), 'demo': false});
+    await tester.pump();
+    final awake = <bool>[];
+    await pumpScreen(tester, session, wakeLock: (on) async => awake.add(on));
+
+    expect(awake, isEmpty, reason: 'ready is not a Session yet');
+
+    await session.start();
+    await tester.pump();
+    expect(session.status, SessionStatus.listening);
+    expect(awake, [true], reason: 'Start turns the wake lock on');
+
+    await session.stop();
+    await tester.pump();
+    expect(awake, [true, false], reason: 'Stop releases it');
+  });
+
+  testWidgets('disposing while listening releases the wake lock, guarded', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final transport = FakeTransport();
+    final session = await connectedSession(transport);
+    transport.emit({...helloMessage(), 'demo': false});
+    await tester.pump();
+    final awake = <bool>[];
+    await pumpScreen(
+      tester,
+      session,
+      wakeLock: (on) async {
+        awake.add(on);
+        // A plugin that is already gone at teardown.
+        if (!on) throw StateError('wake lock channel closed');
+      },
+    );
+    await session.start();
+    await tester.pump();
+    expect(awake, [true]);
+
+    await tester.pumpWidget(const SizedBox());
+    expect(tester.takeException(), isNull);
+    expect(awake, [true, false]);
+  });
+
+  testWidgets('page margins step to 24dp at 600dp width and wider', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final transport = FakeTransport();
+    final session = await connectedSession(transport);
+    transport.emit(segmentMessage(1));
+    await tester.pump();
+
+    tester.view.physicalSize = const Size(599, 900);
+    await pumpScreen(tester, session);
+    expect(tester.getTopLeft(find.text('Parley')).dx, 16);
+
+    tester.view.physicalSize = const Size(600, 900);
+    await pumpScreen(tester, session);
+    expect(tester.getTopLeft(find.text('Parley')).dx, 24);
+
+    tester.view.physicalSize = const Size(1000, 900);
+    await pumpScreen(tester, session);
+    expect(tester.getTopLeft(find.text('Parley')).dx, 24);
   });
 
   testWidgets('Advanced in the ⋯ menu reveals latency chips', (tester) async {

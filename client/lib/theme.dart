@@ -97,6 +97,10 @@ class ParleyColors {
   final Color error;
 }
 
+/// Page margin: 16dp, or 24dp at 600dp width and wider (SYNTHESIS §1.3).
+double parleyMargin(BuildContext context) =>
+    MediaQuery.sizeOf(context).width >= 600 ? 24.0 : 16.0;
+
 ThemeData parleyTheme(Brightness brightness) {
   final colors = brightness == Brightness.dark
       ? ParleyColors.dark

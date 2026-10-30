@@ -54,10 +54,20 @@ class _ListenScreenState extends State<ListenScreen> {
     setState(() => _step = (_step + 1) % _steps.length);
   }
 
-  void _toggleFocus() {
-    setState(() => _focus = !_focus);
-    _setAwake(_focus);
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_syncAwake);
+    _syncAwake();
   }
+
+  /// The screen stays awake for the whole Session (SYNTHESIS §1.4), not only
+  /// in Focus mode.
+  void _syncAwake() {
+    unawaited(_setAwake(widget.session.status == SessionStatus.listening));
+  }
+
+  void _toggleFocus() => setState(() => _focus = !_focus);
 
   Future<void> _setAwake(bool on) async {
     if (_awake == on) return;
@@ -72,10 +82,9 @@ class _ListenScreenState extends State<ListenScreen> {
 
   @override
   void dispose() {
-    if (_awake) {
-      _awake = false;
-      unawaited(widget.wakeLock(false));
-    }
+    widget.session.removeListener(_syncAwake);
+    // Guarded like every wake-lock call: teardown may outlive the plugin.
+    unawaited(_setAwake(false));
     super.dispose();
   }
 
@@ -126,8 +135,8 @@ class _ListenScreenState extends State<ListenScreen> {
                       children: [
                         Positioned.fill(child: captions),
                         Positioned(
-                          right: 16,
-                          bottom: 16,
+                          right: parleyMargin(context),
+                          bottom: parleyMargin(context),
                           child: IconButton.filledTonal(
                             key: const Key('exit-focus'),
                             tooltip: l10n?.exitFocusMode ?? 'Exit focus mode',
@@ -206,7 +215,12 @@ class _Header extends StatelessWidget {
     final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
     final listening = session.status == SessionStatus.listening;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: EdgeInsets.fromLTRB(
+        parleyMargin(context),
+        12,
+        parleyMargin(context),
+        8,
+      ),
       child: Column(
         children: [
           Row(
@@ -323,7 +337,10 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: colors.surface,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: EdgeInsets.symmetric(
+        horizontal: parleyMargin(context),
+        vertical: 12,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -351,7 +368,12 @@ class _AudioUnavailableChip extends StatelessWidget {
     final colors = ParleyColors.of(context);
     final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: EdgeInsets.fromLTRB(
+        parleyMargin(context),
+        0,
+        parleyMargin(context),
+        8,
+      ),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Container(
@@ -396,7 +418,12 @@ class _StartBar extends StatelessWidget {
         session.status == SessionStatus.stopped;
     return Container(
       color: colors.control,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: EdgeInsets.fromLTRB(
+        parleyMargin(context),
+        8,
+        parleyMargin(context),
+        16,
+      ),
       child: SizedBox(
         width: double.infinity,
         child: FilledButton(

@@ -132,20 +132,30 @@ class _CaptionStackState extends State<CaptionStack> {
           ListView.builder(
             controller: _controller,
             reverse: true,
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: EdgeInsets.fromLTRB(
+              parleyMargin(context),
+              16,
+              parleyMargin(context),
+              8,
+            ),
             itemCount: widget.segments.length,
             itemBuilder: (context, index) {
               return Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 720),
-                  child: _SegmentView(
-                    segment:
-                        widget.segments[widget.segments.length - 1 - index],
-                    rank: index,
-                    topGap: index == 0 ? 0 : 24,
-                    captionSize: widget.captionSize,
-                    showSource: widget.showSource,
-                    showLatency: widget.showLatency,
+                  // Fill the column so short lines align to the margin, not
+                  // to the centre of their own text.
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _SegmentView(
+                      segment:
+                          widget.segments[widget.segments.length - 1 - index],
+                      rank: index,
+                      topGap: index == 0 ? 0 : 24,
+                      captionSize: widget.captionSize,
+                      showSource: widget.showSource,
+                      showLatency: widget.showLatency,
+                    ),
                   ),
                 ),
               );
@@ -187,6 +197,7 @@ class _CaptionStackState extends State<CaptionStack> {
       );
     }
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.demo) DemoBanner(onUseKeys: widget.onUseKeys),
         Expanded(child: body),
@@ -217,7 +228,7 @@ class DemoBanner extends StatelessWidget {
       key: const Key('demo-banner'),
       width: double.infinity,
       color: colors.demoBackground,
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      padding: EdgeInsets.fromLTRB(parleyMargin(context), 8, 8, 8),
       child: Row(
         children: [
           Icon(Icons.science_outlined, size: 18, color: colors.demoForeground),
