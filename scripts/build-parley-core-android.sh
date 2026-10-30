@@ -15,8 +15,10 @@ command -v gomobile >/dev/null || {
   exit 1
 }
 
+# android (four ABIs) for emulators, android/arm64 for CI and releases.
+target=${GOMOBILE_TARGET:-android}
 mkdir -p "$repo/client/android/app/libs"
 cd "$repo"
-gomobile bind -target=android -androidapi 24 \
+gomobile bind -target="$target" -androidapi 24 \
   -o client/android/app/libs/parleycore.aar ./mobile
 ls -lh client/android/app/libs/parleycore.aar

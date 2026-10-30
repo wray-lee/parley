@@ -27,6 +27,7 @@ func startServer(t *testing.T, values map[string]string) (*host.Server, int, *lo
 
 func startServerWith(t *testing.T, values map[string]string, options host.Options) (*host.Server, int, *logSink) {
 	t.Helper()
+	options.Loopback = true // test servers stay off the host firewall
 	values["PORT"] = "0"
 	sink := &logSink{records: make(chan protocol.SegmentLog, 16)}
 	options.SegmentLog = sink.log

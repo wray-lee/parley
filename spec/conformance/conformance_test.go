@@ -926,6 +926,7 @@ func TestMain(m *testing.M) {
 
 func startGoHost(t *testing.T, values map[string]string, opts host.Options) *host.Server {
 	t.Helper()
+	opts.Loopback = true // test servers stay off the host firewall
 	values["PORT"] = "0"
 	server, err := host.New(host.LoadConfig(func(key string) string { return values[key] }), parley.Assets, opts)
 	if err != nil {

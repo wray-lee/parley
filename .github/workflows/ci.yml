@@ -1,20 +1,78 @@
 name: CI
 
+# Pull requests and branch pushes. Tags are release-only; the Release workflow
+# owns them.
 on:
   push:
+    branches: ['**']
   pull_request:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.26.5'
+  BUN_VERSION: '1.4.3'
+  FLUTTER_VERSION: '3.47.8'
+  ANDROID_NDK_VERSION: '28.2.13676358'
+  GOMOBILE_VERSION: 'v0.0.0-20261011034528-197770444867'
+
 jobs:
-  test:
+  version:
+    name: Version formula
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/version.sh
+
+  go:
+    name: Go checks (vet, traces, conformance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Conformance Suite starts the Bun host in process and compares it
+      # with the Go host, so the oracle needs Bun and node_modules/ws.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - run: go vet ./...
+
+      - name: go test (unit, trace replay, conformance vs the Bun oracle)
+        run: CGO_ENABLED=0 go test -count=1 ./...
+
+      - name: Static Go build
+        run: CGO_ENABLED=0 go build ./...
+
+      - name: No secret material tracked
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$|\.(jks|keystore|p12)$'; then
+            echo '::error::secret material is tracked in the repository'
+            exit 1
+          fi
+
+  js-oracle:
+    name: Legacy JS oracle (until P4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.3
+          bun-version: ${{ env.BUN_VERSION }}
       - uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
@@ -25,3 +83,118 @@ jobs:
       - run: bun run test
       - name: Keyless demo smoke
         run: bun run smoke
+
+  flutter:
+    name: Flutter (format, analyze, widgets, goldens, a11y)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: client
+      - name: dart format --set-exit-if-changed
+        run: dart format --output=none --set-exit-if-changed lib test
+        working-directory: client
+      - run: flutter analyze
+        working-directory: client
+      - name: flutter test (widgets, goldens, accessibility guidelines)
+        run: flutter test
+        working-directory: client
+
+  web-budget:
+    name: Web brotli size budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: client
+      - name: Build web (self-hosted CanvasKit and fonts)
+        run: flutter build web --release --no-web-resources-cdn
+        working-directory: client
+      - name: Brotli size budget (3.5 MiB)
+        run: node scripts/web-size-budget.mjs client/build/web
+
+  changes:
+    name: Android path filter
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.diff.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: |
+          changed=$(bash scripts/android-changed.sh "$BASE" "$HEAD")
+          echo "android=$changed" >> "$GITHUB_OUTPUT"
+
+  android:
+    name: Android AAR and APK
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      GOMOBILE_TARGET: android/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install NDK r28
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "ndk;$ANDROID_NDK_VERSION" "build-tools;37.0.0" "platforms;android-37.0" > /dev/null
+
+      - name: Install pinned gomobile
+        run: |
+          go install "golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}"
+          go install "golang.org/x/mobile/cmd/gobind@${GOMOBILE_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: gomobile bind -target=android/arm64 -androidapi 24
+        run: bash scripts/build-parley-core-android.sh
+
+      - run: flutter pub get
+        working-directory: client
+
+      - name: flutter build apk --debug (arm64)
+        run: flutter build apk --debug --target-platform android-arm64
+        working-directory: client
+
+      - name: zipalign -c -P 16 and versionCode
+        run: |
+          version_code=$(bash scripts/version.sh | sed -n 's/^version_code=//p')
+          bash scripts/check-apk.sh --apk client/build/app/outputs/flutter-apk/app-debug.apk \
+            --version-code "$version_code"

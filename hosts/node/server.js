@@ -172,11 +172,11 @@ export async function createServer({ config = loadConfig(), logger = defaultLogg
   });
 
   return {
-    listen(port = config.port) {
+    listen(port = config.port, host = process.env.HOST || '127.0.0.1') {
       return new Promise((resolve, reject) => {
         const onError = (error) => reject(error);
         http.once('error', onError);
-        http.listen(port, () => {
+        http.listen(port, host, () => {
           http.off('error', onError);
           resolve(http.address());
         });

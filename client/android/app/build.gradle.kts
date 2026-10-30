@@ -30,11 +30,34 @@ android {
         versionName = flutter.versionName
     }
 
+    // The release workflow exports the four ANDROID_* signing secrets plus
+    // ANDROID_KEYSTORE_PATH (decoded outside the repository). Local builds
+    // without them stay debug-signed.
+    val releaseKeystore = System.getenv("ANDROID_KEYSTORE_PATH")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                val password = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                val alias = System.getenv("ANDROID_KEY_ALIAS")
+                val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                require(!password.isNullOrEmpty() && !alias.isNullOrEmpty() && !keyPassword.isNullOrEmpty()) {
+                    "ANDROID_KEYSTORE_PATH is set but ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS or ANDROID_KEY_PASSWORD is missing"
+                }
+                storeFile = file(releaseKeystore)
+                storePassword = password
+                keyAlias = alias
+                this.keyPassword = keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseKeystore != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

@@ -1,22 +1,191 @@
 name: Release
 
-# Triggered by a version tag (human-gated: never push a tag without explicit
-# authorisation) or manually for a dry run that uploads workflow artefacts only.
+# Human-gated: this workflow never creates a tag. Push an existing v* tag to
+# publish a release, or dispatch it manually for a dry run that uploads the
+# artefacts to the workflow run only. See docs/release.md.
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: '1.26.5'
+  FLUTTER_VERSION: '3.47.8'
+  ANDROID_NDK_VERSION: '28.2.13676358'
+  GOMOBILE_VERSION: 'v0.0.0-20261011034528-197770444867'
+  # Public fingerprint of the retained v0.0.2 signing key. Not a secret.
+  EXPECTED_ANDROID_CERT_SHA256: eb1f6f0dbcd938b34f8db1ebaeb0ba0304a67b60312bc24b18e6c69d282333e8
+
 jobs:
-  android:
+  guard:
+    name: Version, tag and signing guard
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      version_code: ${{ steps.version.outputs.version_code }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: version
+        name: Version formula and tag policy
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            bash scripts/version.sh --tag "$GITHUB_REF_NAME" --github-output "$GITHUB_OUTPUT"
+          else
+            # Tags are human-gated. A dry run must not race a human-created tag.
+            bash scripts/version.sh --require-tag-absent --github-output "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refuse to overwrite a published release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "::error::release $GITHUB_REF_NAME is already published"
+            exit 1
+          fi
+
+      - name: Require the Android signing secrets for a tagged release
+        if: github.event_name == 'push'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::repository secret for $name is not set; a tagged release needs the existing ANDROID_* signing secrets"
+              exit 1
+            fi
+          done
+
+  binaries:
+    name: Static server binaries
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build linux amd64/arm64, darwin arm64, windows amd64
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 darwin/arm64 windows/amd64; do
+            os=${target%/*}
+            arch=${target#*/}
+            out="parley-server-${os}-${arch}"
+            [ "$os" = windows ] && out="${out}.exe"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -trimpath -ldflags='-s -w' -o "dist/$out" ./cmd/parley-server
+            tar -czf "dist/parley-server-${os}-${arch}.tar.gz" -C dist "$out"
+            rm "dist/$out"
+          done
+          file dist/*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  image:
+    name: Distroless server image
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the distroless image from deploy/
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: docker build -f deploy/Dockerfile -t "parley-server:${VERSION}" .
+
+      - name: Smoke the image on /healthz
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          docker run -d --name parley-release-smoke -p 127.0.0.1:3000:3000 "parley-server:${VERSION}"
+          ok=
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/healthz > /dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          docker logs parley-release-smoke
+          docker stop parley-release-smoke
+          [ -n "$ok" ] || { echo '::error::the image did not answer /healthz'; exit 1; }
+
+      - name: Save the image for the release
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          docker save "parley-server:${VERSION}" | gzip > "dist/parley-server-${VERSION}-image.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: dist/*-image.tar.gz
+          if-no-files-found: error
+
+  web:
+    name: Flutter web bundle
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: client
+      - name: Build web (self-hosted CanvasKit and fonts)
+        run: flutter build web --release --no-web-resources-cdn
+        working-directory: client
+      - name: Brotli size budget (3.5 MiB)
+        run: node scripts/web-size-budget.mjs client/build/web
+      - name: Package the web bundle
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          mkdir -p dist
+          tar -czf "dist/parley-${VERSION}-web.tar.gz" -C client/build/web .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist/parley-*-web.tar.gz
+          if-no-files-found: error
+
+  android:
+    name: Signed arm64 APK
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
-      # All PENDING-USER. Empty until the user creates them; the job then falls
-      # back to a debug-signed APK. See docs/release.md.
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      GOMOBILE_TARGET: android/arm64
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -24,212 +193,156 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-java@v4
         with:
-          bun-version: 1.4.3
+          distribution: temurin
+          java-version: '17'
 
-      - name: Free disk space (the builder image is ~8.5 GB)
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Decode the release keystore outside the repository
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo docker image prune -af
-
-      - name: Build APK in the Android builder image
-        run: |
-          set -euo pipefail
-          version=$(bun -p "require('./app/src-tauri/tauri.conf.json').version")
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/keys" "$RUNNER_TEMP/out"
-
-          docker build -f app/android-builder.Dockerfile -t parley-android-builder:local app
-
-          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+          mkdir -p "$RUNNER_TEMP/keys"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keys/release.keystore"
             chmod 600 "$RUNNER_TEMP/keys/release.keystore"
-          fi
-
-          # shortcut: the builder image is rebuilt on every run (~2 GB download);
-          # move it to GHCR if release runs become frequent.
-          docker run --rm \
-            -v "$GITHUB_WORKSPACE:/work" \
-            -v "$RUNNER_TEMP/keys:/keys" \
-            -v "$RUNNER_TEMP/out:/out" \
-            -e ANDROID_KEYSTORE_BASE64 \
-            -e ANDROID_KEYSTORE_PASSWORD \
-            -e ANDROID_KEY_ALIAS \
-            -e ANDROID_KEY_PASSWORD \
-            -w /work/app \
-            parley-android-builder:local bash -c '
-              set -euo pipefail
-              bun install --frozen-lockfile
-              bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-              if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-                bunx tauri android build --apk -t aarch64
-                apk=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -print -quit)
-                test -n "$apk"
-                "$bt/zipalign" -f -p 4 "$apk" /tmp/aligned.apk
-                "$bt/apksigner" sign \
-                  --ks /keys/release.keystore --ks-key-alias "$ANDROID_KEY_ALIAS" \
-                  --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
-                  --key-pass env:ANDROID_KEY_PASSWORD \
-                  --out /out/parley.apk /tmp/aligned.apk
-              else
-                mkdir -p /root/.android
-                keytool -genkeypair -keystore /root/.android/debug.keystore \
-                  -storepass android -keypass android -alias androiddebugkey \
-                  -keyalg RSA -keysize 2048 -validity 10000 \
-                  -dname "CN=Android Debug,O=Android,C=US"
-                bunx tauri android build --apk --debug -t aarch64
-                apk=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" -print -quit)
-                test -n "$apk"
-                cp "$apk" /out/parley.apk
-              fi
-              "$bt/apksigner" verify --print-certs /out/parley.apk
-              "$bt/aapt2" dump badging /out/parley.apk > /tmp/badging.txt
-              "$bt/aapt2" dump permissions /out/parley.apk > /tmp/permissions.txt
-              grep -q "app.parley.translate" /tmp/badging.txt
-              grep -q "android.permission.RECORD_AUDIO" /tmp/permissions.txt
-              echo "apk verified"
-            '
-
-      - name: Name APK and checksum
-        run: |
-          set -euo pipefail
-          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-            apk="parley-$VERSION-arm64.apk"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/keys/release.keystore" >> "$GITHUB_ENV"
+            echo "SIGNED=true" >> "$GITHUB_ENV"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "::error::a tagged release requires the ANDROID_KEYSTORE_* secrets"
+            exit 1
           else
-            apk="parley-$VERSION-arm64-debug.apk"
+            echo "::warning::dry run without signing secrets; the APK will be debug-signed"
+            echo "SIGNED=false" >> "$GITHUB_ENV"
           fi
-          mv "$RUNNER_TEMP/out/parley.apk" "$RUNNER_TEMP/out/$apk"
-          # apksigner writes a v4 idsig next to the APK; it is not a release asset.
-          rm -f "$RUNNER_TEMP/out/parley.apk.idsig"
-          (cd "$RUNNER_TEMP/out" && sha256sum "$apk" > "$apk.sha256")
-          cat "$RUNNER_TEMP/out/$apk.sha256"
+
+      - name: Install NDK r28
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "ndk;$ANDROID_NDK_VERSION" "build-tools;37.0.0" "platforms;android-37.0" > /dev/null
+
+      - name: Install pinned gomobile
+        run: |
+          go install "golang.org/x/mobile/cmd/gomobile@${GOMOBILE_VERSION}"
+          go install "golang.org/x/mobile/cmd/gobind@${GOMOBILE_VERSION}"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: gomobile bind -target=android/arm64 -androidapi 24
+        run: bash scripts/build-parley-core-android.sh
+
+      - run: flutter pub get
+        working-directory: client
+
+      - name: flutter build apk --release (arm64)
+        run: flutter build apk --release --target-platform android-arm64
+        working-directory: client
+
+      - name: Verify package id, versionCode, 16 KiB alignment and certificate
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          apk=client/build/app/outputs/flutter-apk/app-release.apk
+          args=(--apk "$apk" --version-code "${{ needs.guard.outputs.version_code }}")
+          if [ "$SIGNED" = true ]; then
+            args+=(--cert-sha256 "$EXPECTED_ANDROID_CERT_SHA256")
+          fi
+          bash scripts/check-apk.sh "${args[@]}"
+          mkdir -p dist
+          suffix=arm64
+          [ "$SIGNED" = true ] || suffix=arm64-debug
+          cp "$apk" "dist/parley-${VERSION}-${suffix}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: android-apk
-          path: ${{ runner.temp }}/out/*
+          name: android
+          path: dist/parley-*-arm64*.apk
           if-no-files-found: error
 
   ios:
+    name: Unsigned IPA
+    needs: guard
     runs-on: macos-latest
-    env:
-      # All PENDING-USER. When these are set the job builds a signed IPA; until
-      # then it builds an unsigned IPA for AltStore/SideStore. See docs/release.md.
-      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
-      APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: subosito/flutter-action@v2
         with:
-          bun-version: 1.4.3
-      - uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-app-${{ hashFiles('app/bun.lock') }}
-          restore-keys: ${{ runner.os }}-bun-app-
-
-      - name: Install Rust iOS target
-        run: rustup target add aarch64-apple-ios
-
-      - name: Install app dependencies
-        working-directory: app
-        run: bun install --frozen-lockfile
-
-      - name: Import signing certificate (optional)
-        if: env.APPLE_CERTIFICATE_BASE64 != ''
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+        working-directory: client
+      - name: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign
+        working-directory: client
+      - name: Package the unsigned IPA
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
         run: |
-          set -euo pipefail
-          keychain="$RUNNER_TEMP/parley-signing.keychain-db"
-          keychain_password="$(openssl rand -hex 16)"
-          echo -n "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$keychain_password" "$keychain"
-          security list-keychains -d user -s "$keychain" \
-            $(security list-keychains -d user | tr -d '"')
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo -n "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 --decode \
-            > "$HOME/Library/MobileDevice/Provisioning Profiles/parley.mobileprovision"
-
-      - name: Build IPA
-        working-directory: app
-        run: |
-          set -euo pipefail
-          # Actions sets unset job secrets to an empty string, and the Tauri CLI
-          # rejects an empty development team even for --no-sign builds. Remove
-          # the variable entirely when no Apple team is configured.
-          if [ -z "${APPLE_DEVELOPMENT_TEAM:-}" ]; then
-            unset APPLE_DEVELOPMENT_TEAM
-          fi
-          # The iOS Xcode project is generated, not committed (unlike gen/android).
-          if [ ! -d src-tauri/gen/apple ]; then
-            bunx tauri ios init --ci
-          fi
-          if [ -n "${APPLE_CERTIFICATE_BASE64:-}" ]; then
-            bunx tauri ios build --ci --export-method debugging
-            suffix=""
-          else
-            bunx tauri ios build --no-sign --ci
-            suffix="-unsigned"
-          fi
-          ipa=$(find src-tauri/gen/apple/build -name "*.ipa" > "$RUNNER_TEMP/ipas.txt"; head -n 1 "$RUNNER_TEMP/ipas.txt")
-          test -n "$ipa"
-          unzip -l "$ipa" > "$RUNNER_TEMP/ipa-list.txt"
-          grep -q "Payload/.*\.app/" "$RUNNER_TEMP/ipa-list.txt"
-          version=$(bun -p "require('./src-tauri/tauri.conf.json').version")
-          mkdir -p "$RUNNER_TEMP/out"
-          cp "$ipa" "$RUNNER_TEMP/out/parley-$version$suffix.ipa"
-          (cd "$RUNNER_TEMP/out" && shasum -a 256 "parley-$version$suffix.ipa" \
-            > "parley-$version$suffix.ipa.sha256")
-          cat "$RUNNER_TEMP/out/parley-$version$suffix.ipa.sha256"
-
+          mkdir -p dist Payload
+          cp -R client/build/ios/iphoneos/Runner.app Payload/
+          zip -qry "dist/parley-${VERSION}-unsigned.ipa" Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: ios-ipa
-          path: ${{ runner.temp }}/out/*
+          name: ios
+          path: dist/parley-*-unsigned.ipa
           if-no-files-found: error
 
-  release:
-    # A tag push is the only path that publishes. Manual runs stop at artefacts.
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [android, ios]
+  publish:
+    name: Publish GitHub Release
+    needs: [guard, binaries, image, web, android, ios]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          path: release-assets
+          path: dist
           merge-multiple: true
 
-      - name: Publish GitHub Release
+      - name: Compose release notes
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          VERSION_CODE: ${{ needs.guard.outputs.version_code }}
+          CERT_SHA256: ${{ env.EXPECTED_ANDROID_CERT_SHA256 }}
+        run: |
+          cat > notes.md <<EOF
+          ## Parley ${VERSION}
+
+          The APK is arm64 only, application id \`app.parley.translate\`, versionCode ${VERSION_CODE}.
+
+          **Upgrading from v0.0.2**
+          - Keys and settings must be re-entered once after upgrading.
+          - Uninstall any debug-signed Parley build before installing this APK. Debug and release builds use different signing keys, so Android refuses to install one over the other.
+
+          **Artefacts**
+          - \`parley-${VERSION}-arm64.apk\` — signed with the retained v0.0.2 key (certificate SHA-256 \`${CERT_SHA256}\`).
+          - \`parley-${VERSION}-unsigned.ipa\` — install with AltStore/SideStore.
+          - \`parley-${VERSION}-web.tar.gz\` — Flutter web bundle, serve same-origin next to the server.
+          - \`parley-server-<os>-<arch>.tar.gz\` — static server binaries (linux amd64/arm64, darwin arm64, windows amd64).
+          - \`parley-server-${VERSION}-image.tar.gz\` — distroless image, \`docker load\` it.
+
+          ## SHA-256
+          EOF
+          (cd dist && sha256sum *) >> notes.md
+
+      - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          # The job has no checkout, so tell gh which repository to publish to.
+          # This job has no checkout; gh needs the repository explicitly.
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          notes=$(cat <<EOF
-          Parley $TAG
-
-          - Android: signed arm64 APK (debug-signed if the repository signing secrets are not configured). Install it directly on the phone.
-          - iOS: IPA (unsigned in the default channel), install it with AltStore or SideStore, which re-sign it with your Apple ID.
-
-          Sideloading instructions: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$TAG/docs/release.md#sideloading
-          EOF
-          )
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --clobber
-          else
-            gh release create "$TAG" release-assets/* \
-              --title "Parley $TAG" --notes "$notes"
-          fi
+          TAG: ${{ needs.guard.outputs.tag }}
+          TITLE: Parley ${{ needs.guard.outputs.version }}
+        run: gh release create "$TAG" --verify-tag --title "$TITLE" --notes-file notes.md dist/*

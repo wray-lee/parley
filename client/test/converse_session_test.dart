@@ -7,7 +7,10 @@ import 'package:parley/session/listen_session.dart';
 
 import 'fakes.dart';
 
-Map<String, dynamic> hello({bool converse = true, bool autoAvailable = false}) => {
+Map<String, dynamic> hello({
+  bool converse = true,
+  bool autoAvailable = false,
+}) => {
   'type': 'hello',
   'pairs': [
     {
@@ -210,78 +213,91 @@ void main() {
     expect(session.gated, isFalse);
   });
 
-  test('Auto Turn stays off and silent when the Provider cannot report tags', () async {
-    final transport = FakeTransport();
-    final session = await startedConverse(transport);
+  test(
+    'Auto Turn stays off and silent when the Provider cannot report tags',
+    () async {
+      final transport = FakeTransport();
+      final session = await startedConverse(transport);
 
-    expect(session.autoTurnAvailable, isFalse);
-    expect(session.autoTurnEnabled, isFalse);
+      expect(session.autoTurnAvailable, isFalse);
+      expect(session.autoTurnEnabled, isFalse);
 
-    final before = transport.sentText.length;
-    session.setAutoTurn(true);
-    expect(transport.sentText.length, before);
-    expect(session.autoTurnEnabled, isFalse);
-  });
+      final before = transport.sentText.length;
+      session.setAutoTurn(true);
+      expect(transport.sentText.length, before);
+      expect(session.autoTurnEnabled, isFalse);
+    },
+  );
 
-  test('Auto Turn is opt-in on a capable Provider and shows the detected language', () async {
-    final transport = FakeTransport();
-    final session = await startedConverse(transport, autoAvailable: true);
+  test(
+    'Auto Turn is opt-in on a capable Provider and shows the detected language',
+    () async {
+      final transport = FakeTransport();
+      final session = await startedConverse(transport, autoAvailable: true);
 
-    expect(session.autoTurnAvailable, isTrue);
-    expect(session.autoTurnEnabled, isFalse, reason: 'S3 no-go: opt-in only');
+      expect(session.autoTurnAvailable, isTrue);
+      expect(session.autoTurnEnabled, isFalse, reason: 'S3 no-go: opt-in only');
 
-    session.setAutoTurn(true);
-    expect(sent(transport).last, {'type': 'autoTurn', 'enabled': true});
-    expect(session.autoTurnEnabled, isTrue);
+      session.setAutoTurn(true);
+      expect(sent(transport).last, {'type': 'autoTurn', 'enabled': true});
+      expect(session.autoTurnEnabled, isTrue);
 
-    transport.emit({
-      'type': 'turn',
-      'who': 'them',
-      'auto': true,
-      'language': 'ja',
-    });
-    await pumpEventQueue();
-    expect(session.turn, 'them');
-    expect(session.turnAuto, isTrue);
-    expect(session.autoLanguage, 'ja');
+      transport.emit({
+        'type': 'turn',
+        'who': 'them',
+        'auto': true,
+        'language': 'ja',
+      });
+      await pumpEventQueue();
+      expect(session.turn, 'them');
+      expect(session.turnAuto, isTrue);
+      expect(session.autoLanguage, 'ja');
 
-    transport.emit({
-      'type': 'turn',
-      'who': 'them',
-      'auto': true,
-      'uncertain': true,
-    });
-    await pumpEventQueue();
-    expect(session.padCue, 1);
-    expect(session.turnCue, 1, reason: 'an undecided Segment is not a Turn change');
-  });
+      transport.emit({
+        'type': 'turn',
+        'who': 'them',
+        'auto': true,
+        'uncertain': true,
+      });
+      await pumpEventQueue();
+      expect(session.padCue, 1);
+      expect(
+        session.turnCue,
+        1,
+        reason: 'an undecided Segment is not a Turn change',
+      );
+    },
+  );
 
-  test('a pad tap in Auto overrides even the current pad and stops playback', () async {
-    final transport = FakeTransport();
-    final player = FakeTtsPlayer();
-    final session = ListenSession(
-      transport: transport,
-      audio: FakeAudioCapture(),
-      ttsPlayer: player,
-    );
-    addTearDown(session.dispose);
-    await session.connect();
-    transport.emit(hello(autoAvailable: true));
-    await pumpEventQueue();
-    final pair = session.pairs.first;
-    session
-      ..selectMode(SessionMode.converse)
-      ..selectPair(pair)
-      ..selectDirection(pair.direction('zh', 'ja'));
-    await session.start();
-    transport.emit({'type': 'turn', 'who': 'me', 'auto': false});
-    await pumpEventQueue();
-    session.setAutoTurn(true);
+  test(
+    'a pad tap in Auto overrides even the current pad and stops playback',
+    () async {
+      final transport = FakeTransport();
+      final player = FakeTtsPlayer();
+      final session = ListenSession(
+        transport: transport,
+        audio: FakeAudioCapture(),
+        ttsPlayer: player,
+      );
+      addTearDown(session.dispose);
+      await session.connect();
+      transport.emit(hello(autoAvailable: true));
+      await pumpEventQueue();
+      final pair = session.pairs.first;
+      session
+        ..selectMode(SessionMode.converse)
+        ..selectPair(pair)
+        ..selectDirection(pair.direction('zh', 'ja'));
+      await session.start();
+      transport.emit({'type': 'turn', 'who': 'me', 'auto': false});
+      await pumpEventQueue();
+      session.setAutoTurn(true);
 
-    final stops = player.stops;
-    session.takeTurn('me');
-    expect(sent(transport).last, {'type': 'turn', 'who': 'me'});
-    await pumpEventQueue();
-    expect(player.stops, greaterThan(stops));
-  });
+      final stops = player.stops;
+      session.takeTurn('me');
+      expect(sent(transport).last, {'type': 'turn', 'who': 'me'});
+      await pumpEventQueue();
+      expect(player.stops, greaterThan(stops));
+    },
+  );
 }

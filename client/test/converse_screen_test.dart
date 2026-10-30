@@ -681,60 +681,61 @@ void main() {
     expect(chip.data, startsWith('${themL10n.converseAuto} ·'));
   });
 
-  testWidgets('an undecided Auto Turn pulses the pads for 250 ms with a haptic', (
-    tester,
-  ) async {
-    final calls = <MethodCall>[];
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        calls.add(call);
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+  testWidgets(
+    'an undecided Auto Turn pulses the pads for 250 ms with a haptic',
+    (tester) async {
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
-        null,
-      ),
-    );
-    final transport = FakeTransport();
-    final session = await startedSession(
-      tester,
-      transport,
-      autoAvailable: true,
-    );
-    await pumpConverse(tester, session);
-    session.setAutoTurn(true);
-    await tester.pump();
+        (call) async {
+          calls.add(call);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      final transport = FakeTransport();
+      final session = await startedSession(
+        tester,
+        transport,
+        autoAvailable: true,
+      );
+      await pumpConverse(tester, session);
+      session.setAutoTurn(true);
+      await tester.pump();
 
-    transport.emit({
-      'type': 'turn',
-      'who': 'me',
-      'auto': true,
-      'uncertain': true,
-    });
-    await tester.pump();
-    await tester.pump();
+      transport.emit({
+        'type': 'turn',
+        'who': 'me',
+        'auto': true,
+        'uncertain': true,
+      });
+      await tester.pump();
+      await tester.pump();
 
-    final pad = tester.widget<AnimatedContainer>(
-      find.byKey(const Key('pad-surface-them')),
-    );
-    final border = (pad.decoration! as BoxDecoration).border! as Border;
-    expect(border.top.width, 2);
-    expect(
-      calls.any((call) => call.method == 'HapticFeedback.vibrate'),
-      isTrue,
-    );
+      final pad = tester.widget<AnimatedContainer>(
+        find.byKey(const Key('pad-surface-them')),
+      );
+      final border = (pad.decoration! as BoxDecoration).border! as Border;
+      expect(border.top.width, 2);
+      expect(
+        calls.any((call) => call.method == 'HapticFeedback.vibrate'),
+        isTrue,
+      );
 
-    await tester.pump(const Duration(milliseconds: 300));
-    final cleared = tester.widget<AnimatedContainer>(
-      find.byKey(const Key('pad-surface-them')),
-    );
-    final clearedBorder =
-        (cleared.decoration! as BoxDecoration).border! as Border;
-    expect(clearedBorder.top.width, 1);
-  });
+      await tester.pump(const Duration(milliseconds: 300));
+      final cleared = tester.widget<AnimatedContainer>(
+        find.byKey(const Key('pad-surface-them')),
+      );
+      final clearedBorder =
+          (cleared.decoration! as BoxDecoration).border! as Border;
+      expect(clearedBorder.top.width, 1);
+    },
+  );
 
   testWidgets('goldens: split and stacked Converse', (tester) async {
     final transport = FakeTransport();

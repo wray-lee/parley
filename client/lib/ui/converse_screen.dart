@@ -455,7 +455,10 @@ class _ConverseScreenState extends State<ConverseScreen> {
                 Container(
                   key: Key('auto-chip-$who'),
                   margin: const EdgeInsets.only(top: 2),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
                   decoration: BoxDecoration(
                     color: colors.control,
                     borderRadius: BorderRadius.circular(999),
@@ -474,10 +477,7 @@ class _ConverseScreenState extends State<ConverseScreen> {
         if (who == 'me') ...[
           widget.session.autoTurnAvailable
               ? toggle
-              : Tooltip(
-                  message: l10n.converseAutoUnavailable,
-                  child: toggle,
-                ),
+              : Tooltip(message: l10n.converseAutoUnavailable, child: toggle),
           IconButton(
             key: const Key('converse-settings'),
             tooltip: l10n.settings,
