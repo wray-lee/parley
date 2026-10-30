@@ -137,7 +137,16 @@ class DeviceHostTransport implements Transport {
     return _enqueue(() async {
       await _disconnect();
       await _host.stop();
-      if (generation == _generation) await _connect(generation);
+      if (generation != _generation) return;
+      try {
+        await _connect(generation);
+      } catch (error) {
+        // The settings route sees this throw, but a live Session only hears
+        // the outer streams; without this it would stay "listening" with no
+        // host behind it.
+        _text.addError(error);
+        rethrow;
+      }
     });
   }
 
@@ -161,9 +170,11 @@ class DeviceHostTransport implements Transport {
     if (_connected && !_pausing) return;
     try {
       await connect();
-    } catch (_) {
-      // The Session's subscription turns this into its Connection lost state.
-      _text.addError(StateError('connection lost'));
+    } catch (error) {
+      // The Session's subscription ends the Session; a Device Host error
+      // keeps its redacted cause, anything else falls back to "Connection
+      // lost." so the socket URI and token never reach the banner.
+      _text.addError(error);
     }
   }
 

@@ -343,6 +343,8 @@ void main() {
       FakeDeviceHost host,
       DeviceHostTransport transport,
       ListenSession session,
+      FakeAudioCapture audio,
+      FakeTtsPlayer ttsPlayer,
     })
   >
   readySession() async {
@@ -352,55 +354,104 @@ void main() {
       host: host,
       environment: () => const {},
     );
+    final audio = FakeAudioCapture();
+    final ttsPlayer = FakeTtsPlayer();
     final session = ListenSession(
       transport: transport,
-      audio: FakeAudioCapture(),
-      ttsPlayer: FakeTtsPlayer(),
+      audio: audio,
+      ttsPlayer: ttsPlayer,
     );
     addTearDown(transport.close);
     addTearDown(session.dispose);
     await session.connect();
     await eventually(() => session.status == SessionStatus.ready);
-    return (host: host, transport: transport, session: session);
+    return (
+      host: host,
+      transport: transport,
+      session: session,
+      audio: audio,
+      ttsPlayer: ttsPlayer,
+    );
   }
 
+  const missingRegion =
+      'Azure TTS requires AZURE_SPEECH_REGION (for example eastus).';
+
   test(
-    'Start after a failed Settings restart reports the host error',
+    'a failed Settings restart fails the Session with the host error',
     () async {
       final s = await readySession();
       // What Settings Save does with an invalid environment: the host start
       // rejects before any socket exists.
-      s.host.startError = const DeviceHostException(
-        'Azure TTS requires AZURE_SPEECH_REGION (for example eastus).',
-      );
+      s.host.startError = const DeviceHostException(missingRegion);
       await expectLater(
         s.transport.restart(),
         throwsA(isA<DeviceHostException>()),
       );
-      // The dead transport emits nothing, so the Session still reads `ready`.
-      expect(s.session.status, SessionStatus.ready);
+      await eventually(() => s.session.status == SessionStatus.failed);
 
-      await s.session.start();
-
-      expect(s.session.status, SessionStatus.failed);
-      expect(
-        s.session.error,
-        'Azure TTS requires AZURE_SPEECH_REGION (for example eastus).',
-      );
+      expect(s.session.error, missingRegion);
       expect(server.received, isEmpty);
     },
   );
 
-  test('Start after a failed restart keeps a non-host error generic', () async {
+  test(
+    'a failed Settings restart fails a listening Session and stops the mic',
+    () async {
+      final s = await readySession();
+      await s.session.start();
+      expect(s.session.status, SessionStatus.listening);
+      expect(s.audio.started, isTrue);
+
+      s.host.startError = const DeviceHostException(missingRegion);
+      await expectLater(
+        s.transport.restart(),
+        throwsA(isA<DeviceHostException>()),
+      );
+      await eventually(() => s.session.status == SessionStatus.failed);
+
+      expect(s.session.error, missingRegion);
+      expect(s.audio.started, isFalse);
+    },
+  );
+
+  test(
+    'a successful Settings restart stops a listening Session at ready',
+    () async {
+      final s = await readySession();
+      await s.session.start();
+      expect(s.session.status, SessionStatus.listening);
+      expect(s.audio.started, isTrue);
+
+      await s.transport.restart();
+      await eventually(() => s.session.status == SessionStatus.ready);
+
+      expect(s.session.error, isNull);
+      expect(s.audio.started, isFalse);
+      expect(s.ttsPlayer.stops, greaterThanOrEqualTo(1));
+    },
+  );
+
+  test('resume reports the Device Host error, not Connection lost', () async {
+    final s = await readySession();
+    await s.transport.suspend();
+    s.host.startError = const DeviceHostException(missingRegion);
+
+    await s.transport.resume();
+    await eventually(() => s.session.status == SessionStatus.failed);
+
+    expect(s.session.error, missingRegion);
+  });
+
+  test('a failed restart keeps a non-host error generic', () async {
     final s = await readySession();
     s.host.startError = StateError(
       'start failed at ws://127.0.0.1:9/ws?token=SECRET123',
     );
     await expectLater(s.transport.restart(), throwsA(isA<StateError>()));
+    await eventually(() => s.session.status == SessionStatus.failed);
 
-    await s.session.start();
-
-    expect(s.session.status, SessionStatus.failed);
-    expect(s.session.error, 'Connection failed.');
+    expect(s.session.error, 'Connection lost.');
+    expect(s.session.error, isNot(contains('SECRET123')));
   });
 }

@@ -221,11 +221,11 @@ class ListenSession extends ChangeNotifier {
     debugPrint('PARLEY connect');
     _textSubscription = _transport.text.listen(
       _handleText,
-      onError: (Object _) => _fail('Connection lost.'),
+      onError: _transportFailed,
     );
     _binarySubscription = _transport.binary.listen(
       _tts.chunk,
-      onError: (Object _) => _fail('Connection lost.'),
+      onError: _transportFailed,
     );
     await _connectTransport();
   }
@@ -248,6 +248,15 @@ class ListenSession extends ChangeNotifier {
       _fail('Connection failed.');
     }
     return false;
+  }
+
+  /// A transport stream error: the host behind a live Session failed, so the
+  /// mic and playback stop and the banner carries the Device Host's redacted
+  /// cause. Any other error can hold the socket URI, token included, so it
+  /// keeps the generic banner.
+  void _transportFailed(Object error) {
+    unawaited(_stopCapture());
+    _fail(error is DeviceHostException ? error.message : 'Connection lost.');
   }
 
   /// The microphone recovery card's "Open Settings".
@@ -405,15 +414,20 @@ class ListenSession extends ChangeNotifier {
   }
 
   Future<void> stop() async {
-    await _audio.stop();
-    await _tts.stop();
-    await _systemTts?.stop();
+    await _stopCapture();
     _send({'type': 'stop'});
-    _gateTail?.cancel();
-    gated = false;
     turn = null;
     status = SessionStatus.stopped;
     _notify();
+  }
+
+  /// Ends local capture and playback; the caller decides the Session status.
+  Future<void> _stopCapture() async {
+    await _audio.stop();
+    await _tts.stop();
+    await _systemTts?.stop();
+    _gateTail?.cancel();
+    gated = false;
   }
 
   DirectionRef _startDirection(LanguagePair pair, DemoClip? sample) {
@@ -480,6 +494,9 @@ class ListenSession extends ChangeNotifier {
   }
 
   void _handleHello(Map<String, dynamic> message) {
+    // A Settings Save or foreground resume swapped the host under a live
+    // Session: the old Session is gone, so stop the hot mic and land on Start.
+    if (status == SessionStatus.listening) unawaited(_stopCapture());
     demo = message['demo'] == true;
     tts = message['tts'] as String? ?? '';
     pairs = (message['pairs'] as List<dynamic>? ?? const [])
