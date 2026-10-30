@@ -5,11 +5,13 @@ import 'package:material_ui/material_ui.dart';
 
 import '../l10n/parley_localizations.dart';
 import '../model/mode.dart';
+import '../platform/first_run_store_api.dart';
 import '../session/listen_session.dart';
 import '../settings/settings_controller.dart';
 import '../theme.dart';
 import 'converse_screen.dart';
 import 'listen_screen.dart';
+import 'onboarding_screen.dart';
 import 'settings_screen.dart';
 import 'start_screen.dart';
 
@@ -19,6 +21,8 @@ class ParleyApp extends StatefulWidget {
     required this.createSession,
     this.settings,
     this.readOnlySettings = kIsWeb,
+    this.firstRun,
+    this.showOnboarding = false,
   });
 
   final ListenSession Function() createSession;
@@ -26,6 +30,12 @@ class ParleyApp extends StatefulWidget {
   /// Native builds edit and persist Provider settings; web is read-only.
   final SettingsController? settings;
   final bool readOnlySettings;
+
+  /// First-run flags; null means the host has nowhere to keep them (tests).
+  final FirstRunStore? firstRun;
+
+  /// A fresh install starts on the three-step onboarding, not on Start.
+  final bool showOnboarding;
 
   @override
   State<ParleyApp> createState() => _ParleyAppState();
@@ -35,6 +45,7 @@ class _ParleyAppState extends State<ParleyApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late final ListenSession _session;
   bool _started = false;
+  late bool _onboarded = !widget.showOnboarding;
 
   @override
   void initState() {
@@ -52,6 +63,18 @@ class _ParleyAppState extends State<ParleyApp> {
   void _start() {
     setState(() => _started = true);
     unawaited(_session.start());
+  }
+
+  /// The third onboarding step either starts the keyless demo right away or
+  /// lands on Start when the user still has keys or a server to set up.
+  void _finishOnboarding({required bool startNow}) {
+    final store = widget.firstRun;
+    if (store != null) unawaited(store.markSeen('onboarding'));
+    setState(() {
+      _onboarded = true;
+      if (startNow) _started = true;
+    });
+    if (startNow) unawaited(_session.start());
   }
 
   void _openSettings() {
@@ -80,7 +103,14 @@ class _ParleyAppState extends State<ParleyApp> {
       themeMode: ThemeMode.dark,
       localizationsDelegates: parleyLocalizationDelegates,
       supportedLocales: parleySupportedLocales,
-      home: !_started
+      home: !_onboarded
+          ? OnboardingScreen(
+              session: _session,
+              onFinish: _finishOnboarding,
+              onSettings: _openSettings,
+              onUseKeys: onUseKeys,
+            )
+          : !_started
           ? StartScreen(
               session: _session,
               onStart: _start,
@@ -92,6 +122,7 @@ class _ParleyAppState extends State<ParleyApp> {
               session: _session,
               onSettings: _openSettings,
               onUseKeys: onUseKeys,
+              firstRun: widget.firstRun,
             )
           : ListenScreen(
               session: _session,

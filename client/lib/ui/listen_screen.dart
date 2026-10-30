@@ -5,9 +5,11 @@ import 'package:material_ui/material_ui.dart';
 import '../l10n/app_localizations.dart';
 import '../model/protocol.dart';
 import '../platform/keep_awake.dart';
+import '../platform/mic_permission_api.dart';
 import '../session/listen_session.dart';
 import '../theme.dart';
 import 'caption_stack.dart';
+import 'mic_recovery.dart';
 import 'session_bar.dart';
 
 /// The Listen surface: status and pair from `hello`, the caption stack, and
@@ -108,6 +110,8 @@ class _ListenScreenState extends State<ListenScreen> {
           held: session.held,
           merges: session.merges,
           inlineError: session.inlineError,
+          inlineErrorKind: session.inlineErrorKind,
+          asrReconnecting: session.asrReconnecting,
           captionSize: captionSize,
           showSource: !_focus,
           showLatency: _advanced,
@@ -115,8 +119,12 @@ class _ListenScreenState extends State<ListenScreen> {
           focus: _focus,
           onSkipLive: session.skipLive,
           onUseKeys: widget.onUseKeys,
+          onSettings: widget.onSettings,
         );
         final banners = [
+          if (session.micRecovery != null &&
+              session.micRecovery != MicAccess.granted)
+            MicRecoveryCard(session: session),
           if (session.error != null)
             _ErrorBanner(message: session.error!, colors: colors),
           if (session.audioError != null) const AudioUnavailableChip(),
@@ -178,6 +186,7 @@ class _ListenScreenState extends State<ListenScreen> {
                     maxScaleFactor: 1.3,
                     child: banner,
                   ),
+                _OutputHint(session: session, colors: colors),
                 Expanded(child: captions),
                 MediaQuery.withClampedTextScaling(
                   maxScaleFactor: 1.3,
@@ -328,6 +337,57 @@ class _Header extends StatelessWidget {
         SessionStatus.stopped => l10n?.stopped ?? 'Stopped',
         SessionStatus.failed => l10n?.connectionFailed ?? 'Connection failed',
       };
+}
+
+/// Earphones are the default voice route; the loudspeaker is an explicit
+/// opt-in, so nobody creates feedback by accident.
+class _OutputHint extends StatelessWidget {
+  const _OutputHint({required this.session, required this.colors});
+
+  final ListenSession session;
+  final ParleyColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    final speaker = session.loudspeakerOptIn;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        parleyMargin(context),
+        0,
+        parleyMargin(context),
+        4,
+      ),
+      child: Row(
+        key: const Key('output-hint'),
+        children: [
+          Icon(
+            speaker ? Icons.volume_up_outlined : Icons.headphones,
+            size: 16,
+            color: colors.muted,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              speaker
+                  ? l10n?.listenLoudspeakerOn ?? 'Loudspeaker voice is on.'
+                  : l10n?.listenEarphonesHint ??
+                        'Earphones recommended to avoid feedback.',
+              style: TextStyle(color: colors.muted, fontSize: 12),
+            ),
+          ),
+          TextButton(
+            key: const Key('loudspeaker-toggle'),
+            onPressed: () => session.setLoudspeakerOptIn(!speaker),
+            child: Text(
+              l10n?.listenLoudspeaker ?? 'Loudspeaker',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ErrorBanner extends StatelessWidget {

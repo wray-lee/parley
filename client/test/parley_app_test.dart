@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:parley/model/protocol.dart';
+import 'package:parley/platform/mic_permission_api.dart';
 import 'package:parley/session/listen_session.dart';
 import 'package:parley/ui/converse_screen.dart';
 import 'package:parley/ui/parley_app.dart';
@@ -103,5 +105,76 @@ void main() {
     expect(start['mode'], 'converse');
     expect(start['src'], 'zh');
     expect(start['tgt'], 'ja');
+  });
+
+  testWidgets('a denied microphone surfaces a recovery card after Start', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final mic = FakeMicPermission(MicAccess.denied);
+    final session = ListenSession(
+      transport: transport,
+      audio: FakeAudioCapture(),
+      ttsPlayer: FakeTtsPlayer(),
+      micPermission: mic,
+    );
+
+    await tester.pumpWidget(
+      ParleyApp(createSession: () => session, readOnlySettings: true),
+    );
+    await tester.pump();
+    transport.emit(converseHello());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('start-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mic-recovery-card')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mic-recovery-settings')));
+    expect(mic.settingsOpened, 1);
+  });
+
+  testWidgets('a fresh install finishes onboarding on the Demo and starts', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final firstRun = FakeFirstRunStore();
+    final audio = FakeAudioCapture();
+    final session = ListenSession(
+      transport: transport,
+      audio: audio,
+      ttsPlayer: FakeTtsPlayer(),
+      loadDemoClip: () async => DemoClip.fromJson({
+        'id': 'placeholder',
+        'duration_ms': 20,
+        'audio': <dynamic>[],
+        'src': 'ja',
+        'tgt': 'zh',
+      }),
+    );
+
+    await tester.pumpWidget(
+      ParleyApp(
+        createSession: () => session,
+        readOnlySettings: true,
+        firstRun: firstRun,
+        showOnboarding: true,
+      ),
+    );
+    await tester.pump();
+    transport.emit({...converseHello(), 'demo': true});
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('onboarding-pair-0')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('onboarding-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('onboarding-next')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('onboarding-finish')));
+    await tester.pumpAndSettle();
+
+    expect(firstRun.values, contains('onboarding'));
+    expect(audio.started, isTrue);
+    expect(find.byKey(const Key('demo-banner')), findsOneWidget);
   });
 }

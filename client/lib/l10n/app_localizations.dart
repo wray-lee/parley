@@ -675,6 +675,252 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Audio unavailable — subtitles only'**
   String get audioUnavailable;
+
+  /// No description provided for @micPrimer.
+  ///
+  /// In en, this message translates to:
+  /// **'Parley listens only while a Session runs.'**
+  String get micPrimer;
+
+  /// No description provided for @micDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone access is off. Allow it in Settings, then Start again.'**
+  String get micDenied;
+
+  /// No description provided for @micInsecure.
+  ///
+  /// In en, this message translates to:
+  /// **'The microphone needs HTTPS. Open Parley over https:// or on localhost.'**
+  String get micInsecure;
+
+  /// No description provided for @openSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Settings'**
+  String get openSettings;
+
+  /// No description provided for @listenEarphonesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Earphones recommended to avoid feedback.'**
+  String get listenEarphonesHint;
+
+  /// No description provided for @listenLoudspeaker.
+  ///
+  /// In en, this message translates to:
+  /// **'Loudspeaker'**
+  String get listenLoudspeaker;
+
+  /// No description provided for @listenLoudspeakerOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Loudspeaker voice is on.'**
+  String get listenLoudspeakerOn;
+
+  /// No description provided for @asrReconnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'ASR disconnected — reconnecting…'**
+  String get asrReconnecting;
+
+  /// No description provided for @errorNextAuth.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the API key in Settings.'**
+  String get errorNextAuth;
+
+  /// No description provided for @errorNextQuota.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait for the quota to reset or top up, then try again.'**
+  String get errorNextQuota;
+
+  /// No description provided for @errorNextNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the network connection and the Base URL.'**
+  String get errorNextNetwork;
+
+  /// No description provided for @errorNextModel.
+  ///
+  /// In en, this message translates to:
+  /// **'Check the model name and Base URL in Settings.'**
+  String get errorNextModel;
+
+  /// No description provided for @errorNextCors.
+  ///
+  /// In en, this message translates to:
+  /// **'The Provider blocks browser requests; connect through your Server Host.'**
+  String get errorNextCors;
+
+  /// No description provided for @errorNextTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again, or choose a lighter model.'**
+  String get errorNextTimeout;
+
+  /// No description provided for @errorNextGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again; if it persists, check Settings.'**
+  String get errorNextGeneric;
+
+  /// No description provided for @onboardingPairTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pair'**
+  String get onboardingPairTitle;
+
+  /// No description provided for @onboardingPairBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose how you will use Parley.'**
+  String get onboardingPairBody;
+
+  /// No description provided for @onboardingTryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Try it'**
+  String get onboardingTryTitle;
+
+  /// No description provided for @onboardingTryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Start keyless, paste your own keys, or use your Server Host.'**
+  String get onboardingTryBody;
+
+  /// No description provided for @onboardingDemo.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo'**
+  String get onboardingDemo;
+
+  /// No description provided for @onboardingDemoBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Bundled sample audio, no key needed.'**
+  String get onboardingDemoBody;
+
+  /// No description provided for @onboardingKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Use my keys'**
+  String get onboardingKeys;
+
+  /// No description provided for @onboardingKeysBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste Provider keys in Settings.'**
+  String get onboardingKeysBody;
+
+  /// No description provided for @onboardingServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect to my server'**
+  String get onboardingServer;
+
+  /// No description provided for @onboardingServerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Use the Server Host this build points at.'**
+  String get onboardingServerBody;
+
+  /// No description provided for @onboardingNoDemo.
+  ///
+  /// In en, this message translates to:
+  /// **'This server has no Demo audio.'**
+  String get onboardingNoDemo;
+
+  /// No description provided for @onboardingAudioTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Check audio'**
+  String get onboardingAudioTitle;
+
+  /// No description provided for @onboardingAudioBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Parley listens only while a Session runs. You will hear the translated sample through the output you choose.'**
+  String get onboardingAudioBody;
+
+  /// No description provided for @onboardingEarphones.
+  ///
+  /// In en, this message translates to:
+  /// **'Earphones'**
+  String get onboardingEarphones;
+
+  /// No description provided for @onboardingLoudspeaker.
+  ///
+  /// In en, this message translates to:
+  /// **'Loudspeaker'**
+  String get onboardingLoudspeaker;
+
+  /// No description provided for @onboardingNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get onboardingNext;
+
+  /// No description provided for @onboardingBack.
+  ///
+  /// In en, this message translates to:
+  /// **'Back'**
+  String get onboardingBack;
+
+  /// No description provided for @onboardingFinish.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish setup'**
+  String get onboardingFinish;
+
+  /// No description provided for @onboardingStartDemo.
+  ///
+  /// In en, this message translates to:
+  /// **'Start the demo'**
+  String get onboardingStartDemo;
+
+  /// No description provided for @onboardingTestSound.
+  ///
+  /// In en, this message translates to:
+  /// **'Play test sound'**
+  String get onboardingTestSound;
+
+  /// No description provided for @audioTestPhrase.
+  ///
+  /// In en, this message translates to:
+  /// **'Parley will speak your translations here.'**
+  String get audioTestPhrase;
+
+  /// No description provided for @audioTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The test sound failed. Check the device volume and output.'**
+  String get audioTestFailed;
+
+  /// No description provided for @converseFirstUseTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Face to face'**
+  String get converseFirstUseTitle;
+
+  /// No description provided for @converseFirstUseBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Set the phone between you. Each half is in one speaker\'s language, and the far half is turned for them. Tap a half to take the Turn; hold it to talk.'**
+  String get converseFirstUseBody;
+
+  /// No description provided for @gotIt.
+  ///
+  /// In en, this message translates to:
+  /// **'Got it'**
+  String get gotIt;
+
+  /// No description provided for @localNetworkDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Local network access is denied. Allow it in Android Settings > Permissions, then save again.'**
+  String get localNetworkDenied;
 }
 
 class _AppLocalizationsDelegate

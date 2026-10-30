@@ -311,4 +311,138 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get audioUnavailable => 'Audio unavailable — subtitles only';
+
+  @override
+  String get micPrimer => 'Parley listens only while a Session runs.';
+
+  @override
+  String get micDenied =>
+      'Microphone access is off. Allow it in Settings, then Start again.';
+
+  @override
+  String get micInsecure =>
+      'The microphone needs HTTPS. Open Parley over https:// or on localhost.';
+
+  @override
+  String get openSettings => 'Open Settings';
+
+  @override
+  String get listenEarphonesHint => 'Earphones recommended to avoid feedback.';
+
+  @override
+  String get listenLoudspeaker => 'Loudspeaker';
+
+  @override
+  String get listenLoudspeakerOn => 'Loudspeaker voice is on.';
+
+  @override
+  String get asrReconnecting => 'ASR disconnected — reconnecting…';
+
+  @override
+  String get errorNextAuth => 'Check the API key in Settings.';
+
+  @override
+  String get errorNextQuota =>
+      'Wait for the quota to reset or top up, then try again.';
+
+  @override
+  String get errorNextNetwork =>
+      'Check the network connection and the Base URL.';
+
+  @override
+  String get errorNextModel => 'Check the model name and Base URL in Settings.';
+
+  @override
+  String get errorNextCors =>
+      'The Provider blocks browser requests; connect through your Server Host.';
+
+  @override
+  String get errorNextTimeout => 'Try again, or choose a lighter model.';
+
+  @override
+  String get errorNextGeneric => 'Try again; if it persists, check Settings.';
+
+  @override
+  String get onboardingPairTitle => 'Pair';
+
+  @override
+  String get onboardingPairBody => 'Choose how you will use Parley.';
+
+  @override
+  String get onboardingTryTitle => 'Try it';
+
+  @override
+  String get onboardingTryBody =>
+      'Start keyless, paste your own keys, or use your Server Host.';
+
+  @override
+  String get onboardingDemo => 'Demo';
+
+  @override
+  String get onboardingDemoBody => 'Bundled sample audio, no key needed.';
+
+  @override
+  String get onboardingKeys => 'Use my keys';
+
+  @override
+  String get onboardingKeysBody => 'Paste Provider keys in Settings.';
+
+  @override
+  String get onboardingServer => 'Connect to my server';
+
+  @override
+  String get onboardingServerBody =>
+      'Use the Server Host this build points at.';
+
+  @override
+  String get onboardingNoDemo => 'This server has no Demo audio.';
+
+  @override
+  String get onboardingAudioTitle => 'Check audio';
+
+  @override
+  String get onboardingAudioBody =>
+      'Parley listens only while a Session runs. You will hear the translated sample through the output you choose.';
+
+  @override
+  String get onboardingEarphones => 'Earphones';
+
+  @override
+  String get onboardingLoudspeaker => 'Loudspeaker';
+
+  @override
+  String get onboardingNext => 'Next';
+
+  @override
+  String get onboardingBack => 'Back';
+
+  @override
+  String get onboardingFinish => 'Finish setup';
+
+  @override
+  String get onboardingStartDemo => 'Start the demo';
+
+  @override
+  String get onboardingTestSound => 'Play test sound';
+
+  @override
+  String get audioTestPhrase => 'Parley will speak your translations here.';
+
+  @override
+  String get audioTestFailed =>
+      'The test sound failed. Check the device volume and output.';
+
+  @override
+  String get converseFirstUseTitle => 'Face to face';
+
+  @override
+  String get converseFirstUseBody =>
+      'Set the phone between you. Each half is in one speaker\'s language, and the far half is turned for them. Tap a half to take the Turn; hold it to talk.';
+
+  @override
+  String get gotIt => 'Got it';
+
+  @override
+  String get localNetworkDenied =>
+      'Local network access is denied. Allow it in Android Settings > Permissions, then save again.';
 }

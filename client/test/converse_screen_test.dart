@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:parley/l10n/parley_localizations.dart';
 import 'package:parley/model/mode.dart';
+import 'package:parley/platform/first_run_store_api.dart';
 import 'package:parley/session/listen_session.dart';
 import 'package:parley/theme.dart';
 import 'package:parley/ui/converse_screen.dart';
@@ -102,6 +103,7 @@ Future<void> pumpConverse(
   TargetPlatform platform = TargetPlatform.android,
   bool? isWeb,
   VoidCallback? onUseKeys,
+  FirstRunStore? firstRun,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -124,6 +126,7 @@ Future<void> pumpConverse(
             platform: platform,
             isWeb: isWeb,
             onUseKeys: onUseKeys,
+            firstRun: firstRun,
           ),
         ),
       ),
@@ -560,6 +563,25 @@ void main() {
 
     expect(find.byKey(const Key('demo-banner')), findsOneWidget);
     expect(find.byKey(const Key('demo-use-keys')), findsOneWidget);
+  });
+
+  testWidgets('the face-to-face split is explained once, then not again', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final session = await startedSession(tester, transport);
+    final firstRun = FakeFirstRunStore();
+
+    await pumpConverse(tester, session, firstRun: firstRun);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('converse-first-use')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('converse-first-use-dismiss')));
+    await tester.pumpAndSettle();
+    expect(firstRun.values, contains('converse'));
+
+    await pumpConverse(tester, session, firstRun: firstRun);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('converse-first-use')), findsNothing);
   });
 
   testWidgets('goldens: split and stacked Converse', (tester) async {

@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../l10n/app_localizations.dart';
 import '../model/protocol.dart';
 import '../theme.dart';
+import 'error_action.dart';
 
 /// The line under the newest Committed Segment. It shows the Partial (Stable
 /// Prefix upright, unstable tail provisional) and the Hold/Slow/Error states.
@@ -17,16 +18,22 @@ class LiveLine extends StatefulWidget {
     this.held = false,
     this.merges = 0,
     this.error,
+    this.errorKind,
     this.advanced = false,
     this.onSkip,
+    this.onSettings,
   });
 
   final LiveCaption caption;
   final bool held;
   final int merges;
   final String? error;
+
+  /// The core's error kind; it selects the next action under [error].
+  final String? errorKind;
   final bool advanced;
   final VoidCallback? onSkip;
+  final VoidCallback? onSettings;
 
   @override
   State<LiveLine> createState() => _LiveLineState();
@@ -138,12 +145,45 @@ class _LiveLineState extends State<LiveLine> {
           if (widget.held) _holdStatus(colors, l10n),
           if (!widget.held && widget.error == null && _slow)
             _SlowRow(onRetry: _retry, onSkip: widget.onSkip),
-          if (widget.error != null)
+          if (widget.error != null) _errorRow(colors, l10n),
+        ],
+      ),
+    );
+  }
+
+  /// The message plus the kind's next action; auth and model errors also
+  /// offer the Settings link, because that is where the fix lives.
+  Widget _errorRow(ParleyColors colors, AppLocalizations? l10n) {
+    final next = l10n == null ? null : errorNextAction(l10n, widget.errorKind);
+    final settings = errorOffersSettings(widget.errorKind);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.error!,
+            style: TextStyle(color: colors.error, fontSize: 14),
+          ),
+          if (next != null)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                widget.error!,
-                style: TextStyle(color: colors.error, fontSize: 14),
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      next,
+                      key: const Key('error-next-action'),
+                      style: TextStyle(color: colors.muted, fontSize: 14),
+                    ),
+                  ),
+                  if (settings && widget.onSettings != null)
+                    TextButton(
+                      key: const Key('error-open-settings'),
+                      onPressed: widget.onSettings,
+                      child: Text(l10n?.openSettings ?? 'Open Settings'),
+                    ),
+                ],
               ),
             ),
         ],

@@ -6,6 +6,9 @@ import 'package:parley/audio/audio_capture_api.dart';
 import 'package:parley/audio/tts_player_api.dart';
 import 'package:parley/audio/tts_system.dart';
 import 'package:parley/model/protocol.dart';
+import 'package:parley/platform/first_run_store_api.dart';
+import 'package:parley/platform/local_network_permission_api.dart';
+import 'package:parley/platform/mic_permission_api.dart';
 import 'package:parley/transport/transport.dart';
 
 class FakeTransport implements Transport {
@@ -94,6 +97,51 @@ class FakeTtsPlayer implements TtsPlayer {
   @override
   Future<void> dispose() async {
     disposed = true;
+  }
+}
+
+class FakeMicPermission implements MicPermission {
+  FakeMicPermission([this.access = MicAccess.granted]);
+
+  MicAccess access;
+  int requests = 0;
+  int settingsOpened = 0;
+
+  @override
+  Future<MicAccess> request() async {
+    requests++;
+    return access;
+  }
+
+  @override
+  Future<bool> openSettings() async {
+    settingsOpened++;
+    return true;
+  }
+}
+
+class FakeFirstRunStore implements FirstRunStore {
+  FakeFirstRunStore([Set<String>? seen]) : values = {...?seen};
+
+  final Set<String> values;
+
+  @override
+  Future<bool> seen(String flag) async => values.contains(flag);
+
+  @override
+  Future<void> markSeen(String flag) async => values.add(flag);
+}
+
+class FakeLocalNetworkPermission implements LocalNetworkPermission {
+  FakeLocalNetworkPermission([this.access = LocalNetworkAccess.granted]);
+
+  LocalNetworkAccess access;
+  int requests = 0;
+
+  @override
+  Future<LocalNetworkAccess> request() async {
+    requests++;
+    return access;
   }
 }
 

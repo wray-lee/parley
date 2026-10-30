@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:parley/l10n/parley_localizations.dart';
 import 'package:parley/model/protocol.dart';
+import 'package:parley/platform/mic_permission_api.dart';
 import 'package:parley/session/listen_session.dart';
 import 'package:parley/theme.dart';
 import 'package:parley/ui/caption_stack.dart';
@@ -80,6 +81,95 @@ Future<void> pumpScreen(
 }
 
 void main() {
+  testWidgets('Listen hints earphones and makes the loudspeaker opt-in', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final session = await connectedSession(transport);
+    await pumpScreen(tester, session);
+
+    expect(find.byKey(const Key('output-hint')), findsOneWidget);
+    expect(
+      find.text('Earphones recommended to avoid feedback.'),
+      findsOneWidget,
+    );
+    expect(session.loudspeakerOptIn, isFalse);
+
+    await tester.tap(find.byKey(const Key('loudspeaker-toggle')));
+    await tester.pump();
+    expect(session.loudspeakerOptIn, isTrue);
+    expect(find.text('Loudspeaker voice is on.'), findsOneWidget);
+  });
+
+  testWidgets('the DEMO banner stays from Start to Stop', (tester) async {
+    final transport = FakeTransport();
+    final session = ListenSession(
+      transport: transport,
+      audio: FakeAudioCapture(),
+      ttsPlayer: FakeTtsPlayer(),
+      loadDemoClip: () async => DemoClip.fromJson({
+        'id': 'placeholder',
+        'duration_ms': 20,
+        'audio': <dynamic>[],
+        'src': 'ja',
+        'tgt': 'zh',
+      }),
+    );
+    addTearDown(session.dispose);
+    await session.connect();
+    transport.emit(helloMessage());
+    await pumpScreen(tester, session);
+    expect(find.byKey(const Key('demo-banner')), findsOneWidget);
+
+    await session.start();
+    await tester.pump();
+    expect(find.byKey(const Key('demo-banner')), findsOneWidget);
+
+    await session.stop();
+    await tester.pump();
+    expect(find.byKey(const Key('demo-banner')), findsOneWidget);
+  });
+
+  testWidgets('a microphone denial shows the recovery card with Settings', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final session = await connectedSession(transport);
+    session.micRecovery = MicAccess.denied;
+    await pumpScreen(tester, session);
+
+    expect(find.byKey(const Key('mic-recovery-card')), findsOneWidget);
+    expect(find.textContaining('Microphone access is off'), findsOneWidget);
+    expect(find.byKey(const Key('mic-recovery-settings')), findsOneWidget);
+  });
+
+  testWidgets('an insecure page explains HTTPS instead of opening Settings', (
+    tester,
+  ) async {
+    final transport = FakeTransport();
+    final session = await connectedSession(transport);
+    session.micRecovery = MicAccess.insecure;
+    await pumpScreen(tester, session);
+
+    expect(find.textContaining('needs HTTPS'), findsOneWidget);
+    expect(find.byKey(const Key('mic-recovery-settings')), findsNothing);
+  });
+
+  testWidgets('an ASR failure shows the reconnecting chip', (tester) async {
+    final transport = FakeTransport();
+    final session = await connectedSession(transport);
+    transport.emit({
+      'type': 'error',
+      'provider': 'asr',
+      'kind': 'unreachable',
+      'message': 'socket closed',
+    });
+    await tester.pump();
+    await pumpScreen(tester, session);
+
+    expect(find.byKey(const Key('asr-reconnecting')), findsOneWidget);
+  });
+
   testWidgets('a connect failure shows the generic error banner', (
     tester,
   ) async {

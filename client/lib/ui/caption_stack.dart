@@ -17,6 +17,8 @@ class CaptionStack extends StatefulWidget {
     this.held = false,
     this.merges = 0,
     this.inlineError,
+    this.inlineErrorKind,
+    this.asrReconnecting = false,
     this.captionSize = 28,
     this.showSource = true,
     this.showLatency = false,
@@ -24,6 +26,7 @@ class CaptionStack extends StatefulWidget {
     this.focus = false,
     this.onSkipLive,
     this.onUseKeys,
+    this.onSettings,
   });
 
   final List<Segment> segments;
@@ -32,6 +35,11 @@ class CaptionStack extends StatefulWidget {
   final bool held;
   final int merges;
   final String? inlineError;
+  final String? inlineErrorKind;
+
+  /// The ASR Provider failed; the Session is still listening and the chip
+  /// says reconnecting until hypotheses return.
+  final bool asrReconnecting;
 
   /// The Aa step: 24/28/34/40. Captions are never clamped; the OS text scale
   /// applies on top of this.
@@ -46,6 +54,9 @@ class CaptionStack extends StatefulWidget {
 
   /// The Demo banner CTA; null hides it (read-only web).
   final VoidCallback? onUseKeys;
+
+  /// Opens Settings from an error's next action.
+  final VoidCallback? onSettings;
 
   @override
   State<CaptionStack> createState() => _CaptionStackState();
@@ -200,14 +211,17 @@ class _CaptionStackState extends State<CaptionStack> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (widget.demo) DemoBanner(onUseKeys: widget.onUseKeys),
+        if (widget.asrReconnecting) const AsrReconnectingChip(),
         Expanded(child: body),
         LiveLine(
           caption: widget.live,
           held: widget.held,
           merges: widget.merges,
           error: widget.inlineError,
+          errorKind: widget.inlineErrorKind,
           advanced: widget.advanced,
           onSkip: widget.onSkipLive,
+          onSettings: widget.onSettings,
         ),
       ],
     );
@@ -293,6 +307,51 @@ class AudioUnavailableChip extends StatelessWidget {
                 child: Text(
                   l10n?.audioUnavailable ??
                       'Audio unavailable — subtitles only',
+                  style: TextStyle(color: colors.muted, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The Session survives an ASR Provider failure; this pill says the stream is
+/// being re-established rather than pretending the silence is real.
+class AsrReconnectingChip extends StatelessWidget {
+  const AsrReconnectingChip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ParleyColors.of(context);
+    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        parleyMargin(context),
+        0,
+        parleyMargin(context),
+        8,
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          key: const Key('asr-reconnecting'),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: colors.outline),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.sync_problem, size: 16, color: colors.muted),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  l10n?.asrReconnecting ?? 'ASR disconnected — reconnecting…',
                   style: TextStyle(color: colors.muted, fontSize: 12),
                 ),
               ),

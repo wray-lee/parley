@@ -19,6 +19,7 @@ dependencies:
   http: ^1.2.0
   intl: 0.20.3
   material_ui: 1.8.0
+  permission_handler: 13.0.2
   record: 7.1.2
   wakelock_plus: 1.8.2
   web: ^1.1.0

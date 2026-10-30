@@ -7,12 +7,15 @@ import 'package:material_ui/material_ui.dart';
 
 import '../l10n/app_localizations.dart';
 import '../model/protocol.dart';
+import '../platform/first_run_store_api.dart';
 import '../platform/keep_awake.dart';
+import '../platform/mic_permission_api.dart';
 import '../session/listen_session.dart';
 import '../theme.dart';
 import 'caption_stack.dart';
 import 'language_names.dart';
 import 'live_line.dart';
+import 'mic_recovery.dart';
 import 'session_bar.dart';
 import 'speaker_scope.dart';
 
@@ -29,6 +32,7 @@ class ConverseScreen extends StatefulWidget {
     this.onUseKeys,
     this.platform,
     this.isWeb,
+    this.firstRun,
   });
 
   final ListenSession session;
@@ -44,6 +48,10 @@ class ConverseScreen extends StatefulWidget {
   /// Test seams for the layout choice; production reads the real platform.
   final TargetPlatform? platform;
   final bool? isWeb;
+
+  /// The one-time face-to-face explanation; null skips it (widget tests,
+  /// hosts that have no first-run store).
+  final FirstRunStore? firstRun;
 
   @override
   State<ConverseScreen> createState() => _ConverseScreenState();
@@ -61,6 +69,32 @@ class _ConverseScreenState extends State<ConverseScreen> {
     _seenCue = widget.session.turnCue;
     widget.session.addListener(_onSession);
     _syncAwake();
+    if (widget.firstRun != null) unawaited(_explainOnce());
+  }
+
+  /// The face-to-face split is not obvious on first sight: explain it once,
+  /// then leave the pads to teach the rest.
+  Future<void> _explainOnce() async {
+    final store = widget.firstRun!;
+    if (await store.seen('converse')) return;
+    if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('converse-first-use'),
+        title: Text(l10n.converseFirstUseTitle),
+        content: Text(l10n.converseFirstUseBody),
+        actions: [
+          TextButton(
+            key: const Key('converse-first-use-dismiss'),
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.gotIt),
+          ),
+        ],
+      ),
+    );
+    await store.markSeen('converse');
   }
 
   @override
@@ -131,6 +165,10 @@ class _ConverseScreenState extends State<ConverseScreen> {
         final l10n = AppLocalizations.of(context);
         final banners = [
           if (session.demo) DemoBanner(onUseKeys: widget.onUseKeys),
+          if (session.micRecovery != null &&
+              session.micRecovery != MicAccess.granted)
+            MicRecoveryCard(session: session),
+          if (session.asrReconnecting) const AsrReconnectingChip(),
           if (session.error != null) _ErrorBanner(message: session.error!),
           if (session.audioError != null) const AudioUnavailableChip(),
         ];
@@ -255,8 +293,10 @@ class _ConverseScreenState extends State<ConverseScreen> {
                                   held: session.held,
                                   merges: session.merges,
                                   error: session.inlineError,
+                                  errorKind: session.inlineErrorKind,
                                   advanced: true,
                                   onSkip: session.skipLive,
+                                  onSettings: widget.onSettings,
                                 ),
                               if (session.gated)
                                 Padding(

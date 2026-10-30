@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../l10n/app_localizations.dart';
+import '../platform/local_network_permission.dart';
 import '../session/listen_session.dart';
 import '../settings/settings_controller.dart';
 import '../settings/validation.dart';
@@ -15,11 +16,15 @@ class SettingsScreen extends StatefulWidget {
     required this.session,
     this.controller,
     this.readOnly = false,
+    this.localNetwork,
   });
 
   final ListenSession session;
   final SettingsController? controller;
   final bool readOnly;
+
+  /// Android 17 asks for local-network access only when a LAN URL is saved.
+  final LocalNetworkPermission? localNetwork;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -31,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool editingAsr = false;
   bool editingAzure = false;
   String? saveMessage;
+  bool _localNetworkDenied = false;
 
   SettingsController? get controller => widget.controller;
 
@@ -293,7 +299,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     saveMessage!,
                     key: const Key('settings-save-message'),
                     style: TextStyle(
-                      color: controller!.saved && controller!.hostError == null
+                      color:
+                          controller!.saved &&
+                              controller!.hostError == null &&
+                              !_localNetworkDenied
                           ? ParleyColors.of(context).ink
                           : ParleyColors.of(context).error,
                     ),
@@ -310,11 +319,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     controller.update(draft);
     final l10n = AppLocalizations.of(context);
     final saved = await controller.save();
+    var localNetworkDenied = false;
+    if (saved && needsLocalNetworkPermission(controller.values.toMap())) {
+      final access =
+          await (widget.localNetwork ?? createLocalNetworkPermission())
+              .request();
+      localNetworkDenied = access == LocalNetworkAccess.denied;
+    }
     if (!mounted) return;
     setState(() {
-      saveMessage =
-          controller.hostError ??
-          (saved ? l10n.settingsSaved : l10n.settingsSaveFailed);
+      _localNetworkDenied = localNetworkDenied;
+      saveMessage = localNetworkDenied
+          ? l10n.localNetworkDenied
+          : controller.hostError ??
+                (saved ? l10n.settingsSaved : l10n.settingsSaveFailed);
     });
   }
 

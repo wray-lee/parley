@@ -307,4 +307,128 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get audioUnavailable => '音频不可用 — 仅显示字幕';
+
+  @override
+  String get micPrimer => 'Parley 只在会话进行时使用麦克风。';
+
+  @override
+  String get micDenied => '麦克风权限已关闭。请在设置中允许，然后重新开始。';
+
+  @override
+  String get micInsecure => '麦克风需要 HTTPS。请通过 https:// 或 localhost 打开 Parley。';
+
+  @override
+  String get openSettings => '打开设置';
+
+  @override
+  String get listenEarphonesHint => '建议使用耳机以避免啸叫。';
+
+  @override
+  String get listenLoudspeaker => '扬声器';
+
+  @override
+  String get listenLoudspeakerOn => '扬声器输出已开启。';
+
+  @override
+  String get asrReconnecting => 'ASR 已断开 — 正在重连…';
+
+  @override
+  String get errorNextAuth => '请在设置中检查 API 密钥。';
+
+  @override
+  String get errorNextQuota => '等待配额恢复或充值，然后重试。';
+
+  @override
+  String get errorNextNetwork => '请检查网络连接和基础 URL。';
+
+  @override
+  String get errorNextModel => '请在设置中检查模型名称和基础 URL。';
+
+  @override
+  String get errorNextCors => '服务商拒绝了浏览器请求，请通过服务器主机连接。';
+
+  @override
+  String get errorNextTimeout => '请重试，或换用更轻量的模型。';
+
+  @override
+  String get errorNextGeneric => '请重试；若仍然失败，请检查设置。';
+
+  @override
+  String get onboardingPairTitle => '配对';
+
+  @override
+  String get onboardingPairBody => '选择你将如何使用 Parley。';
+
+  @override
+  String get onboardingTryTitle => '试用';
+
+  @override
+  String get onboardingTryBody => '无需密钥直接开始，使用自己的密钥，或连接服务器主机。';
+
+  @override
+  String get onboardingDemo => '演示';
+
+  @override
+  String get onboardingDemoBody => '内置示例音频，无需密钥。';
+
+  @override
+  String get onboardingKeys => '使用我的密钥';
+
+  @override
+  String get onboardingKeysBody => '在设置中粘贴服务商密钥。';
+
+  @override
+  String get onboardingServer => '连接我的服务器';
+
+  @override
+  String get onboardingServerBody => '使用此构建所指向的服务器主机。';
+
+  @override
+  String get onboardingNoDemo => '此服务器没有演示音频。';
+
+  @override
+  String get onboardingAudioTitle => '检查音频';
+
+  @override
+  String get onboardingAudioBody => 'Parley 只在会话进行时使用麦克风。你将通过所选输出听到翻译示例。';
+
+  @override
+  String get onboardingEarphones => '耳机';
+
+  @override
+  String get onboardingLoudspeaker => '扬声器';
+
+  @override
+  String get onboardingNext => '下一步';
+
+  @override
+  String get onboardingBack => '返回';
+
+  @override
+  String get onboardingFinish => '完成设置';
+
+  @override
+  String get onboardingStartDemo => '开始演示';
+
+  @override
+  String get onboardingTestSound => '播放测试音';
+
+  @override
+  String get audioTestPhrase => 'Parley 会在这里朗读你的翻译。';
+
+  @override
+  String get audioTestFailed => '测试音播放失败。请检查设备音量和输出。';
+
+  @override
+  String get converseFirstUseTitle => '面对面';
+
+  @override
+  String get converseFirstUseBody =>
+      '把手机放在两人之间。每一半显示该说话者的语言，远端的一半会旋转 180 度。轻点一半取得话轮，按住说话。';
+
+  @override
+  String get gotIt => '知道了';
+
+  @override
+  String get localNetworkDenied => '本地网络访问被拒绝。请在 Android 设置 > 权限中允许，然后再次保存。';
 }

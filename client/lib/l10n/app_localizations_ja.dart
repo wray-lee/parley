@@ -309,4 +309,131 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get audioUnavailable => '音声を利用できません — 字幕のみ表示';
+
+  @override
+  String get micPrimer => 'Parley がマイクを使うのはセッション中だけです。';
+
+  @override
+  String get micDenied => 'マイクへのアクセスがオフです。設定で許可してから、もう一度開始してください。';
+
+  @override
+  String get micInsecure =>
+      'マイクには HTTPS が必要です。https:// または localhost で Parley を開いてください。';
+
+  @override
+  String get openSettings => '設定を開く';
+
+  @override
+  String get listenEarphonesHint => 'ハウリング防止のためイヤホンを推奨します。';
+
+  @override
+  String get listenLoudspeaker => 'スピーカー';
+
+  @override
+  String get listenLoudspeakerOn => 'スピーカー出力がオンです。';
+
+  @override
+  String get asrReconnecting => 'ASR が切断されました — 再接続中…';
+
+  @override
+  String get errorNextAuth => '設定で API キーを確認してください。';
+
+  @override
+  String get errorNextQuota => 'クォータの回復を待つか追加してから、もう一度お試しください。';
+
+  @override
+  String get errorNextNetwork => 'ネットワーク接続とベース URL を確認してください。';
+
+  @override
+  String get errorNextModel => '設定でモデル名とベース URL を確認してください。';
+
+  @override
+  String get errorNextCors => 'プロバイダーがブラウザからのリクエストを拒否しています。サーバーホスト経由で接続してください。';
+
+  @override
+  String get errorNextTimeout => 'もう一度お試しください。軽いモデルに切り替えるのも有効です。';
+
+  @override
+  String get errorNextGeneric => 'もう一度お試しください。続く場合は設定を確認してください。';
+
+  @override
+  String get onboardingPairTitle => 'ペア';
+
+  @override
+  String get onboardingPairBody => 'Parley の使い方を選びます。';
+
+  @override
+  String get onboardingTryTitle => '試す';
+
+  @override
+  String get onboardingTryBody => 'キーなしで開始するか、自分のキーを使うか、サーバーホストに接続します。';
+
+  @override
+  String get onboardingDemo => 'デモ';
+
+  @override
+  String get onboardingDemoBody => '同梱のサンプル音声。キーは不要です。';
+
+  @override
+  String get onboardingKeys => '自分のキーを使う';
+
+  @override
+  String get onboardingKeysBody => '設定でプロバイダーのキーを貼り付けます。';
+
+  @override
+  String get onboardingServer => '自分のサーバーに接続';
+
+  @override
+  String get onboardingServerBody => 'このビルドが指定するサーバーホストを使います。';
+
+  @override
+  String get onboardingNoDemo => 'このサーバーにはデモ音声がありません。';
+
+  @override
+  String get onboardingAudioTitle => '音声を確認';
+
+  @override
+  String get onboardingAudioBody =>
+      'Parley がマイクを使うのはセッション中だけです。選んだ出力で翻訳サンプルが聞こえます。';
+
+  @override
+  String get onboardingEarphones => 'イヤホン';
+
+  @override
+  String get onboardingLoudspeaker => 'スピーカー';
+
+  @override
+  String get onboardingNext => '次へ';
+
+  @override
+  String get onboardingBack => '戻る';
+
+  @override
+  String get onboardingFinish => 'セットアップを完了';
+
+  @override
+  String get onboardingStartDemo => 'デモを開始';
+
+  @override
+  String get onboardingTestSound => 'テスト音を再生';
+
+  @override
+  String get audioTestPhrase => 'Parley はここで翻訳を読み上げます。';
+
+  @override
+  String get audioTestFailed => 'テスト音を再生できませんでした。端末の音量と出力を確認してください。';
+
+  @override
+  String get converseFirstUseTitle => '対面モード';
+
+  @override
+  String get converseFirstUseBody =>
+      'スマートフォンを二人の間に置きます。それぞれの半分がその話者の言語で表示され、相手側は 180 度回転します。半分をタップしてターンを取ります。長押しで話します。';
+
+  @override
+  String get gotIt => '了解';
+
+  @override
+  String get localNetworkDenied =>
+      'ローカルネットワークへのアクセスが拒否されました。Android の設定 > 権限で許可してから、もう一度保存してください。';
 }

@@ -9,6 +9,7 @@ import '../audio/tts_player_api.dart';
 import '../audio/tts_system.dart';
 import '../model/mode.dart';
 import '../model/protocol.dart';
+import '../platform/mic_permission_api.dart';
 import '../transport/transport.dart';
 import 'tts_queue.dart';
 
@@ -28,13 +29,15 @@ class ListenSession extends ChangeNotifier {
     Future<DemoClip?> Function()? loadDemoClip,
     Future<List<SampleRef>> Function()? loadSamples,
     http.Client? httpClient,
+    MicPermission? micPermission,
   }) : _transport = transport,
        _audio = audio,
        _systemTtsEngine = systemTtsEngine,
        _serverBase = serverBase,
        _loadDemoClip = loadDemoClip,
        _loadSamples = loadSamples,
-       _http = httpClient ?? http.Client() {
+       _http = httpClient ?? http.Client(),
+       _mic = micPermission ?? const GrantedMicPermission() {
     _tts = TtsQueue(
       player: ttsPlayer,
       onPlayback: _reportPlayback,
@@ -49,6 +52,7 @@ class ListenSession extends ChangeNotifier {
   final Future<DemoClip?> Function()? _loadDemoClip;
   final Future<List<SampleRef>> Function()? _loadSamples;
   final http.Client _http;
+  final MicPermission _mic;
   late final TtsQueue _tts;
   SystemTtsSpeaker? _systemTts;
 
@@ -153,6 +157,22 @@ class ListenSession extends ChangeNotifier {
 
   /// A Provider error attached to the pending Segment; earlier Segments stay.
   String? inlineError;
+
+  /// The core's error `kind` (auth, quota, unreachable, timeout, …), which
+  /// picks the next action shown under [inlineError].
+  String? inlineErrorKind;
+
+  /// Set when a Start was refused by the microphone permission; the screens
+  /// show a recovery card until the next Start succeeds.
+  MicAccess? micRecovery;
+
+  /// An ASR Provider failed: the Session stays alive and this pill reads
+  /// "reconnecting" until hypotheses flow again.
+  bool asrReconnecting = false;
+
+  /// Listen plays through earphones unless the user opts into the loudspeaker.
+  bool loudspeakerOptIn = false;
+
   String _lastHypothesis = '';
   SessionStatus status = SessionStatus.connecting;
   String? error;
@@ -180,6 +200,26 @@ class ListenSession extends ChangeNotifier {
       // adds the auth message.
       _fail('Connection failed.');
     }
+  }
+
+  /// The microphone recovery card's "Open Settings".
+  Future<void> openMicSettings() => _mic.openSettings();
+
+  /// The onboarding audio check: one utterance through the current output,
+  /// outside any Session. False means the platform engine refused.
+  Future<bool> testVoice(String text) async {
+    try {
+      await _systemSpeaker.say(text);
+      return true;
+    } catch (error) {
+      _ttsFailed(error);
+      return false;
+    }
+  }
+
+  void setLoudspeakerOptIn(bool on) {
+    loudspeakerOptIn = on;
+    _notify();
   }
 
   /// Loads the Demo sample chips; called by the Start screen when `demo`.
@@ -251,6 +291,17 @@ class ListenSession extends ChangeNotifier {
         _notify();
         return;
       }
+      // The permission is asked here, at the first live Start, never at
+      // launch; Demo Mode plays a bundled sample and needs no microphone.
+      if (!demo) {
+        final access = await _mic.request();
+        if (access != MicAccess.granted) {
+          micRecovery = access;
+          _notify();
+          return;
+        }
+      }
+      micRecovery = null;
       _meDirection = isConverse ? direction : null;
       _themDirection = them;
       turn = null;
@@ -267,6 +318,8 @@ class ListenSession extends ChangeNotifier {
       held = false;
       merges = 0;
       inlineError = null;
+      inlineErrorKind = null;
+      asrReconnecting = false;
       _tts.reset();
       _systemTts?.reset();
       _send({
@@ -408,6 +461,8 @@ class ListenSession extends ChangeNotifier {
       provisional: text.substring(stable.length),
     );
     inlineError = null;
+    inlineErrorKind = null;
+    asrReconnecting = false;
     _notify();
   }
 
@@ -462,6 +517,8 @@ class ListenSession extends ChangeNotifier {
     held = false;
     merges = 0;
     inlineError = null;
+    inlineErrorKind = null;
+    asrReconnecting = false;
     _segments.add(
       Segment(
         segId: segId,
@@ -493,8 +550,16 @@ class ListenSession extends ChangeNotifier {
       audioError = text;
     } else {
       // Provider failures stay inline with the pending Segment; the transcript
-      // above them is never cleared.
+      // above them is never cleared. An ASR failure keeps the Session alive
+      // and shows a reconnect state until hypotheses flow again.
       inlineError = text;
+      final kind = message['kind'] as String?;
+      // The translator reports a bad model/endpoint as `protocol`; the UI's
+      // model recovery ("check the model name and Base URL") is the right one.
+      inlineErrorKind = provider == 'translator' && kind == 'protocol'
+          ? 'model'
+          : kind;
+      if (provider == 'asr') asrReconnecting = true;
     }
     _notify();
   }

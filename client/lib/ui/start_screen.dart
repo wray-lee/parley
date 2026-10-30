@@ -38,6 +38,18 @@ class _StartScreenState extends State<StartScreen> {
   String? sampleId;
   bool _samplesRequested = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // Onboarding may have chosen a Mode and Language Pair already.
+    mode = widget.session.selectedMode;
+    final selected = widget.session.selectedPair;
+    final index = selected == null
+        ? -1
+        : widget.session.pairs.indexOf(selected);
+    if (index >= 0) pairIndex = index;
+  }
+
   LanguagePair? get _pair {
     final pairs = widget.session.pairs;
     if (pairs.isEmpty) return null;
@@ -267,6 +279,14 @@ class _StartScreenState extends State<StartScreen> {
                             ),
                           ],
                         ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  child: Text(
+                    l10n.micPrimer,
+                    key: const Key('mic-primer'),
+                    style: TextStyle(color: colors.muted, fontSize: 12),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),

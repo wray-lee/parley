@@ -102,6 +102,11 @@ class SystemTtsSpeaker {
     _drain ??= _run();
   }
 
+  /// Speaks outside a Session (the onboarding audio check) without reporting
+  /// a seg_id the core never issued.
+  Future<void> say(String text, {String? language}) =>
+      _engine.speak(text, language: language);
+
   Future<void> _run() async {
     try {
       while (_pending.isNotEmpty) {

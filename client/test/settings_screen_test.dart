@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:parley/l10n/parley_localizations.dart';
+import 'package:parley/platform/local_network_permission_api.dart';
 import 'package:parley/session/listen_session.dart';
 import 'package:parley/settings/presets.dart';
 import 'package:parley/settings/secret_store.dart';
@@ -170,6 +171,75 @@ void main() {
       expect(find.text('Custom (Base URL + Model)'), findsOneWidget);
     },
   );
+
+  testWidgets('saving a LAN URL asks for local-network access once', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final (:session, :controller, store: _, transport: _) = await make();
+    addTearDown(session.dispose);
+    await controller.load();
+    controller.update(
+      const Settings(
+        translatorPreset: 'custom',
+        translatorBaseUrl: 'http://192.168.1.5:8080/v1',
+        translatorModel: 'm',
+      ),
+    );
+    final permission = FakeLocalNetworkPermission(LocalNetworkAccess.denied);
+
+    await tester.pumpWidget(
+      wrap(
+        SettingsScreen(
+          session: session,
+          controller: controller,
+          localNetwork: permission,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('save-settings')));
+    await tester.pumpAndSettle();
+
+    expect(permission.requests, 1);
+    expect(
+      find.textContaining('Local network access is denied'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('saving a public URL asks for no local-network access', (
+    tester,
+  ) async {
+    final (:session, :controller, store: _, transport: _) = await make();
+    addTearDown(session.dispose);
+    await controller.load();
+    controller.update(
+      const Settings(
+        translatorPreset: 'custom',
+        translatorBaseUrl: 'https://gateway.example.com/v1',
+        translatorModel: 'm',
+      ),
+    );
+    final permission = FakeLocalNetworkPermission();
+
+    await tester.pumpWidget(
+      wrap(
+        SettingsScreen(
+          session: session,
+          controller: controller,
+          localNetwork: permission,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('save-settings')));
+    await tester.pumpAndSettle();
+
+    expect(permission.requests, 0);
+  });
 
   testWidgets('the System voice never claims the mock needs no key', (
     tester,
