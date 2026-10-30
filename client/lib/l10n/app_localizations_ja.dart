@@ -61,7 +61,22 @@ class AppLocalizationsJa extends AppLocalizations {
   String get stop => '停止';
 
   @override
-  String get converseNotInBuild => '対面の会話画面はこのビルドにはまだ含まれていません。聞くを使ってください。';
+  String get converseMe => '私';
+
+  @override
+  String get converseThem => '相手';
+
+  @override
+  String get converseYourTurn => 'あなたの番です';
+
+  @override
+  String get converseTapToTake => 'タップで交代';
+
+  @override
+  String get converseHoldToTalk => '長押しで話す';
+
+  @override
+  String get converseMicPaused => '発話中はマイクを停止';
 
   @override
   String get captionsEmpty => '字幕がここに表示されます。';

@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:material_ui/material_ui.dart';
 
 import '../l10n/parley_localizations.dart';
+import '../model/mode.dart';
 import '../session/listen_session.dart';
 import '../settings/settings_controller.dart';
 import '../theme.dart';
+import 'converse_screen.dart';
 import 'listen_screen.dart';
 import 'settings_screen.dart';
 import 'start_screen.dart';
@@ -78,15 +80,21 @@ class _ParleyAppState extends State<ParleyApp> {
       themeMode: ThemeMode.dark,
       localizationsDelegates: parleyLocalizationDelegates,
       supportedLocales: parleySupportedLocales,
-      home: _started
-          ? ListenScreen(
+      home: !_started
+          ? StartScreen(
+              session: _session,
+              onStart: _start,
+              onSettings: _openSettings,
+              onUseKeys: onUseKeys,
+            )
+          : _session.selectedMode == SessionMode.converse
+          ? ConverseScreen(
               session: _session,
               onSettings: _openSettings,
               onUseKeys: onUseKeys,
             )
-          : StartScreen(
+          : ListenScreen(
               session: _session,
-              onStart: _start,
               onSettings: _openSettings,
               onUseKeys: onUseKeys,
             ),

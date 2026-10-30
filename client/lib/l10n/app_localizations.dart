@@ -190,11 +190,41 @@ abstract class AppLocalizations {
   /// **'Stop'**
   String get stop;
 
-  /// No description provided for @converseNotInBuild.
+  /// No description provided for @converseMe.
   ///
   /// In en, this message translates to:
-  /// **'The face-to-face Converse screen is not in this build yet; use Listen.'**
-  String get converseNotInBuild;
+  /// **'Me'**
+  String get converseMe;
+
+  /// No description provided for @converseThem.
+  ///
+  /// In en, this message translates to:
+  /// **'Them'**
+  String get converseThem;
+
+  /// No description provided for @converseYourTurn.
+  ///
+  /// In en, this message translates to:
+  /// **'Your turn'**
+  String get converseYourTurn;
+
+  /// No description provided for @converseTapToTake.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to take the turn'**
+  String get converseTapToTake;
+
+  /// No description provided for @converseHoldToTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold to talk'**
+  String get converseHoldToTalk;
+
+  /// No description provided for @converseMicPaused.
+  ///
+  /// In en, this message translates to:
+  /// **'Mic paused while speaking'**
+  String get converseMicPaused;
 
   /// No description provided for @captionsEmpty.
   ///

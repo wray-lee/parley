@@ -8,6 +8,7 @@ import '../platform/keep_awake.dart';
 import '../session/listen_session.dart';
 import '../theme.dart';
 import 'caption_stack.dart';
+import 'session_bar.dart';
 
 /// The Listen surface: status and pair from `hello`, the caption stack, and
 /// one Start/Stop bar. Connection details live behind [ListenSession].
@@ -118,7 +119,7 @@ class _ListenScreenState extends State<ListenScreen> {
         final banners = [
           if (session.error != null)
             _ErrorBanner(message: session.error!, colors: colors),
-          if (session.audioError != null) const _AudioUnavailableChip(),
+          if (session.audioError != null) const AudioUnavailableChip(),
         ];
         if (_focus) {
           return Scaffold(
@@ -180,7 +181,10 @@ class _ListenScreenState extends State<ListenScreen> {
                 Expanded(child: captions),
                 MediaQuery.withClampedTextScaling(
                   maxScaleFactor: 1.3,
-                  child: _StartBar(session: session),
+                  child: SessionStartBar(
+                    session: session,
+                    startLabel: l10n?.startListen ?? 'Start Listen',
+                  ),
                 ),
               ],
             ),
@@ -353,102 +357,6 @@ class _ErrorBanner extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Persistent outcome of a TTS failure: subtitles keep working, speech does
-/// not. It stays until the next connection.
-class _AudioUnavailableChip extends StatelessWidget {
-  const _AudioUnavailableChip();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = ParleyColors.of(context);
-    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        parleyMargin(context),
-        0,
-        parleyMargin(context),
-        8,
-      ),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: colors.outline),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.volume_off_outlined, size: 16, color: colors.muted),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  l10n?.audioUnavailable ??
-                      'Audio unavailable — subtitles only',
-                  style: TextStyle(color: colors.muted, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _StartBar extends StatelessWidget {
-  const _StartBar({required this.session});
-
-  final ListenSession session;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = ParleyColors.of(context);
-    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
-    final listening = session.status == SessionStatus.listening;
-    final canStart =
-        session.status == SessionStatus.ready ||
-        session.status == SessionStatus.stopped;
-    return Container(
-      color: colors.control,
-      padding: EdgeInsets.fromLTRB(
-        parleyMargin(context),
-        8,
-        parleyMargin(context),
-        16,
-      ),
-      child: SizedBox(
-        width: double.infinity,
-        child: FilledButton(
-          onPressed: listening
-              ? session.stop
-              : canStart
-              ? session.start
-              : null,
-          style: FilledButton.styleFrom(
-            backgroundColor: colors.ink,
-            foregroundColor: colors.bg,
-            disabledBackgroundColor: colors.hairline,
-            disabledForegroundColor: colors.muted,
-            minimumSize: const Size.fromHeight(56),
-            textStyle: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          child: Text(
-            listening
-                ? l10n?.stop ?? 'Stop'
-                : l10n?.startListen ?? 'Start Listen',
-          ),
-        ),
       ),
     );
   }

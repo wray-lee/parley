@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:parley/l10n/parley_localizations.dart';
+import 'package:parley/model/mode.dart';
 import 'package:parley/model/protocol.dart';
 import 'package:parley/session/listen_session.dart';
 import 'package:parley/theme.dart';
@@ -102,6 +103,109 @@ void main() {
     await tester.pump();
 
     expect(find.text('They speak 中文 → I read 日本語'), findsOneWidget);
+  });
+
+  testWidgets('Converse starts my Direction, and swap flips it', (
+    tester,
+  ) async {
+    final (:transport, :session) = await makeSession(helloMessage: hello());
+    addTearDown(session.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        StartScreen(
+          session: session,
+          onStart: () => session.start(),
+          onSettings: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('mode-converse')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('start-button')));
+    await tester.pumpAndSettle();
+
+    var start = sent(transport).lastWhere((m) => m['type'] == 'start');
+    expect(start['mode'], 'converse');
+    expect(start['src'], 'zh', reason: 'me -> them, the reverse of Listen');
+    expect(start['tgt'], 'ja');
+    expect(session.meDirection?.src, 'zh');
+
+    await session.stop();
+    session
+      ..selectMode(SessionMode.listen)
+      ..selectPair(session.pairs.first);
+    await tester.pumpWidget(
+      wrap(
+        StartScreen(
+          session: session,
+          onStart: () => session.start(),
+          onSettings: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('mode-converse')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('swap-languages')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('start-button')));
+    await tester.pumpAndSettle();
+
+    start = sent(transport).lastWhere((m) => m['type'] == 'start');
+    expect(start['src'], 'ja');
+    expect(start['tgt'], 'zh');
+  });
+
+  testWidgets('the Demo sample is my speech in Converse', (tester) async {
+    final client = MockClient(
+      (request) async => http.Response(
+        jsonEncode({
+          'id': 'placeholder',
+          'duration_ms': 100,
+          'audio': [
+            {'start_ms': 0, 'end_ms': 50, 'amplitude': 0.2},
+          ],
+          'src': 'zh',
+          'tgt': 'ja',
+        }),
+        200,
+      ),
+    );
+    final (:transport, :session) = await makeSession(
+      helloMessage: hello(demo: true),
+      serverBase: Uri.parse('http://localhost:3000'),
+      httpClient: client,
+      samples: const [SampleRef(id: 'placeholder', src: 'zh', tgt: 'ja')],
+    );
+    addTearDown(session.dispose);
+
+    await tester.pumpWidget(
+      wrap(
+        StartScreen(
+          session: session,
+          onStart: () => session.start(),
+          onSettings: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    // Listen first orients the sample as their speech (swapped); Converse
+    // re-orients it as my speech, so Start must send zh -> ja.
+    await tester.tap(find.byKey(const Key('mode-converse')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('start-button')));
+    await tester.pumpAndSettle();
+
+    final start = sent(transport).lastWhere((m) => m['type'] == 'start');
+    expect(start['mode'], 'converse');
+    expect(start['src'], 'zh');
+    expect(start['tgt'], 'ja');
+    expect(
+      sent(transport).lastWhere((m) => m['type'] == 'sample')['name'],
+      'placeholder',
+    );
   });
 
   testWidgets('a one-way pair is disabled in Converse with a reason', (

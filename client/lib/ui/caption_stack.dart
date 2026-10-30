@@ -245,6 +245,7 @@ class DemoBanner extends StatelessWidget {
           ),
           if (onUseKeys != null)
             TextButton(
+              key: const Key('demo-use-keys'),
               onPressed: onUseKeys,
               child: Text(
                 l10n?.demoUseMyKeys ?? 'Use my keys',
@@ -252,6 +253,52 @@ class DemoBanner extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Persistent outcome of a TTS failure: subtitles keep working, speech does
+/// not. It stays until the next connection.
+class AudioUnavailableChip extends StatelessWidget {
+  const AudioUnavailableChip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = ParleyColors.of(context);
+    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        parleyMargin(context),
+        0,
+        parleyMargin(context),
+        8,
+      ),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          key: const Key('audio-unavailable'),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: colors.outline),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.volume_off_outlined, size: 16, color: colors.muted),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  l10n?.audioUnavailable ??
+                      'Audio unavailable — subtitles only',
+                  style: TextStyle(color: colors.muted, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

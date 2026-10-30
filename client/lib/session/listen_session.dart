@@ -7,15 +7,17 @@ import 'package:http/http.dart' as http;
 import '../audio/audio_capture_api.dart';
 import '../audio/tts_player_api.dart';
 import '../audio/tts_system.dart';
+import '../model/mode.dart';
 import '../model/protocol.dart';
 import '../transport/transport.dart';
 import 'tts_queue.dart';
 
 enum SessionStatus { connecting, ready, listening, stopped, failed }
 
-/// Listen Mode against the Server Host wire protocol: `hello`, Start/Stop,
-/// the Demo sample, committed Segments and ordered TTS playback. One instance
-/// per Session; the UI only reads this object and never builds a URL.
+/// One Session against the Server Host wire protocol, Listen or Converse:
+/// `hello`, Start/Stop, the Demo sample, committed Segments, Turns and gated
+/// TTS playback. One instance per Session; the UI only reads this object and
+/// never builds a URL.
 class ListenSession extends ChangeNotifier {
   ListenSession({
     required Transport transport,
@@ -86,6 +88,59 @@ class ListenSession extends ChangeNotifier {
   /// `hello.tts`: `system` (the client speaks) or `audio` (the host streams).
   String tts = '';
   bool demo = false;
+
+  SessionMode selectedMode = SessionMode.listen;
+
+  /// Converse only: `me` or `them` from the core's `turn` event.
+  String? turn;
+  bool turnAuto = false;
+
+  /// Increments on every Turn change after the first (`turnCueWho` names the
+  /// new speaker). The UI cues motion and a haptic off it.
+  int turnCue = 0;
+  String? turnCueWho;
+
+  /// Converse only: the core withholds the microphone while my spoken Segment
+  /// plays plus a 500 ms tail (ADR-0002), so the screen can say so.
+  bool gated = false;
+  Timer? _gateTail;
+
+  DirectionRef? _meDirection;
+  DirectionRef? _themDirection;
+
+  bool get isConverse => selectedMode == SessionMode.converse;
+
+  /// The Direction my own speech takes (Converse); null outside it.
+  DirectionRef? get meDirection => _meDirection;
+
+  /// The Direction their speech takes, the reverse of [meDirection].
+  DirectionRef? get themDirection => _themDirection;
+
+  void selectMode(SessionMode mode) {
+    selectedMode = mode;
+    _notify();
+  }
+
+  /// A pad tap in Converse: the core selects the Direction that receives audio.
+  void takeTurn(String who) {
+    if (!isConverse || !_isSpeaker(who) || turn == who) return;
+    _send({'type': 'turn', 'who': who});
+  }
+
+  /// Push-to-talk down: the Turn follows the pad, then automatic Cuts suspend.
+  void beginPushToTalk(String who) {
+    if (!isConverse || !_isSpeaker(who)) return;
+    if (turn != who) _send({'type': 'turn', 'who': who});
+    _send({'type': 'ptt', 'state': 'down'});
+  }
+
+  /// Push-to-talk up: the core Cuts the phrase on release.
+  void endPushToTalk() {
+    if (!isConverse) return;
+    _send({'type': 'ptt', 'state': 'up'});
+  }
+
+  static bool _isSpeaker(String who) => who == 'me' || who == 'them';
 
   /// The live Partial: stable prefix upright, the rest provisional. Cleared
   /// by the next committed Segment.
@@ -188,14 +243,35 @@ class ListenSession extends ChangeNotifier {
         }
       }
       final direction = _startDirection(pair, sample);
+      final them = isConverse ? pair.reverseOf(direction) : null;
+      if (isConverse && (!pair.converse || them == null)) {
+        error =
+            'This Language Pair translates one way only, so Converse '
+            'cannot start. Use Listen instead.';
+        _notify();
+        return;
+      }
+      _meDirection = isConverse ? direction : null;
+      _themDirection = them;
+      turn = null;
+      turnAuto = false;
+      turnCue = 0;
+      turnCueWho = null;
+      _gateTail?.cancel();
+      gated = false;
       // A new Session restarts seg_id numbering from 1: drop the previous
-      // Session's captions and audio, including any unfinished clip.
+      // Session's captions, live line and audio, including any unfinished clip.
       _segments.clear();
+      live = LiveCaption.empty;
+      _lastHypothesis = '';
+      held = false;
+      merges = 0;
+      inlineError = null;
       _tts.reset();
       _systemTts?.reset();
       _send({
         'type': 'start',
-        'mode': 'listen',
+        'mode': isConverse ? 'converse' : 'listen',
         'src': direction.src,
         'tgt': direction.tgt,
         'packs': selectedPacks.toList()..sort(),
@@ -224,6 +300,9 @@ class ListenSession extends ChangeNotifier {
     await _tts.stop();
     await _systemTts?.stop();
     _send({'type': 'stop'});
+    _gateTail?.cancel();
+    gated = false;
+    turn = null;
     status = SessionStatus.stopped;
     _notify();
   }
@@ -261,6 +340,9 @@ class ListenSession extends ChangeNotifier {
           status = SessionStatus.listening;
           _notify();
         }
+        break;
+      case 'turn':
+        _handleTurn(message);
         break;
       case 'asr_partial':
         _handlePartial(message['text'] as String? ?? '');
@@ -303,6 +385,12 @@ class ListenSession extends ChangeNotifier {
     selectedPair = pairs.isEmpty ? null : pairs.first;
     selectedDirection = null;
     selectedPacks = {};
+    _meDirection = null;
+    _themDirection = null;
+    turn = null;
+    turnAuto = false;
+    _gateTail?.cancel();
+    gated = false;
     status = SessionStatus.ready;
     error = null;
     debugPrint(
@@ -326,6 +414,20 @@ class ListenSession extends ChangeNotifier {
   void _handleHold(Map<String, dynamic> message) {
     held = message['held'] == true;
     merges = held ? (message['merges'] as int? ?? 0) : 0;
+    _notify();
+  }
+
+  void _handleTurn(Map<String, dynamic> message) {
+    final who = message['who'] as String?;
+    if (!isConverse || who == null || !_isSpeaker(who)) return;
+    final previous = turn;
+    turn = who;
+    turnAuto = message['auto'] == true;
+    debugPrint('PARLEY turn $who auto=$turnAuto');
+    if (previous != null && previous != who) {
+      turnCue++;
+      turnCueWho = who;
+    }
     _notify();
   }
 
@@ -409,6 +511,21 @@ class ListenSession extends ChangeNotifier {
 
   void _reportPlayback(int segId, String state) {
     debugPrint('PARLEY tts $segId $state');
+    if (isConverse) {
+      _gateTail?.cancel();
+      if (state == 'start') {
+        gated = true;
+        debugPrint('PARLEY gated true');
+      } else {
+        // The core keeps Gating for a 500 ms tail after playback ends.
+        _gateTail = Timer(const Duration(milliseconds: 500), () {
+          gated = false;
+          debugPrint('PARLEY gated false');
+          if (!_disposed) _notify();
+        });
+      }
+      _notify();
+    }
     if (!_disposed) {
       _send({'type': 'playback', 'seg_id': segId, 'state': state});
     }
@@ -474,6 +591,7 @@ class ListenSession extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _gateTail?.cancel();
     _textSubscription?.cancel();
     _binarySubscription?.cancel();
     _audio.stop();

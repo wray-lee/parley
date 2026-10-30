@@ -62,8 +62,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get stop => 'Stop';
 
   @override
-  String get converseNotInBuild =>
-      'The face-to-face Converse screen is not in this build yet; use Listen.';
+  String get converseMe => 'Me';
+
+  @override
+  String get converseThem => 'Them';
+
+  @override
+  String get converseYourTurn => 'Your turn';
+
+  @override
+  String get converseTapToTake => 'Tap to take the turn';
+
+  @override
+  String get converseHoldToTalk => 'Hold to talk';
+
+  @override
+  String get converseMicPaused => 'Mic paused while speaking';
 
   @override
   String get captionsEmpty => 'Captions land here.';

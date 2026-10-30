@@ -52,10 +52,15 @@ class _StartScreenState extends State<StartScreen> {
     return pair.direction(pair.a, pair.b) ?? pair.directions.first;
   }
 
+  /// Listen: they speak the source and I read the target. Converse: I speak
+  /// the source of my Direction, which is the reverse of the Listen one.
   DirectionRef? _directionFor(LanguagePair pair) {
     final base = _baseDirection(pair);
-    if (base == null || !swapped) return base;
-    return pair.reverseOf(base);
+    if (base == null) return null;
+    if (mode == SessionMode.converse) {
+      return swapped ? base : pair.reverseOf(base);
+    }
+    return swapped ? pair.reverseOf(base) : base;
   }
 
   /// Swap is offered only when the pair has a reverse Direction; a one-way
@@ -88,27 +93,41 @@ class _StartScreenState extends State<StartScreen> {
     return samples.first.id;
   }
 
-  /// The keyless demo plays the server's bundled sample, so the default
-  /// Direction follows that sample (`selectSamplePair` in the web client).
+  /// The keyless demo plays the server's bundled sample: their speech in
+  /// Listen, my speech in Converse. The sample therefore picks the pair
+  /// orientation (`selectSamplePair` in the web client).
   Future<void> _loadSamples() async {
     await widget.session.loadSamples();
     if (!mounted) return;
+    _orientToDemo();
+  }
+
+  void _orientToDemo() {
+    if (!widget.session.demo) return;
     final pair = _pair;
-    if (pair == null) return;
-    final forward = pair.direction(pair.a, pair.b) ?? pair.directions.first;
+    final base = pair == null ? null : _baseDirection(pair);
+    if (pair == null || base == null) return;
+    SampleRef? placeholder;
     for (final sample in widget.session.samples) {
-      if (sample.id != 'placeholder') continue;
-      for (final direction in pair.directions) {
-        if (sample.matches(direction)) {
-          setState(() => swapped = direction.src != forward.src);
-          return;
-        }
+      if (sample.id == 'placeholder') {
+        placeholder = sample;
+        break;
       }
     }
+    final sample = placeholder;
+    if (sample == null) return;
+    final reverse = pair.reverseOf(base);
+    final sampleIsBase = sample.matches(base);
+    if (!sampleIsBase && (reverse == null || !sample.matches(reverse))) return;
+    setState(() {
+      // Listen reads the sample as their speech; Converse speaks it as mine.
+      swapped = mode == SessionMode.listen ? !sampleIsBase : sampleIsBase;
+    });
   }
 
   void _start(LanguagePair pair, DirectionRef direction) {
     widget.session
+      ..selectMode(mode)
       ..selectPair(pair)
       ..selectDirection(direction)
       ..selectPacks({
@@ -142,9 +161,9 @@ class _StartScreenState extends State<StartScreen> {
         final samples = _samplesFor(direction);
         final effectiveSample = _effectiveSampleId(direction);
         final canStart =
-            mode == SessionMode.listen &&
             pair != null &&
             direction != null &&
+            (mode == SessionMode.listen || pair.converse) &&
             (!session.demo || effectiveSample != null);
         return Scaffold(
           body: SafeArea(
@@ -169,8 +188,10 @@ class _StartScreenState extends State<StartScreen> {
                           children: [
                             _ModeSelector(
                               mode: mode,
-                              onChanged: (value) =>
-                                  setState(() => mode = value),
+                              onChanged: (value) {
+                                setState(() => mode = value);
+                                _orientToDemo();
+                              },
                             ),
                             const SizedBox(height: 20),
                             if (session.error != null) ...[
@@ -182,25 +203,22 @@ class _StartScreenState extends State<StartScreen> {
                               pair: pair,
                               mode: mode,
                               pairIndex: pairIndex,
-                              onPair: (index) => setState(() {
-                                pairIndex = index;
-                                swapped = false;
-                              }),
+                              onPair: (index) {
+                                setState(() {
+                                  pairIndex = index;
+                                  swapped = false;
+                                });
+                                _orientToDemo();
+                              },
                               swapped: swapped,
                               canSwap: _canSwap,
                               onSwap: () => setState(() => swapped = !swapped),
                             ),
-                            if (mode == SessionMode.converse) ...[
-                              if (oneWayPair)
-                                _ReasonRow(
-                                  key: const Key('listen-only-reason'),
-                                  text: l10n.listenOnlyPairReason,
-                                )
-                              else
-                                _ReasonRow(
-                                  key: const Key('converse-not-in-build'),
-                                  text: l10n.converseNotInBuild,
-                                ),
+                            if (mode == SessionMode.converse && oneWayPair) ...[
+                              _ReasonRow(
+                                key: const Key('listen-only-reason'),
+                                text: l10n.listenOnlyPairReason,
+                              ),
                               const SizedBox(height: 12),
                             ],
                             if (session.demo) ...[

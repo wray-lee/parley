@@ -61,7 +61,22 @@ class AppLocalizationsZh extends AppLocalizations {
   String get stop => '停止';
 
   @override
-  String get converseNotInBuild => '面对面对话界面尚未包含在此版本中；请使用聆听。';
+  String get converseMe => '我';
+
+  @override
+  String get converseThem => '对方';
+
+  @override
+  String get converseYourTurn => '轮到你';
+
+  @override
+  String get converseTapToTake => '点按轮到我';
+
+  @override
+  String get converseHoldToTalk => '长按说话';
+
+  @override
+  String get converseMicPaused => '说话时麦克风暂停';
 
   @override
   String get captionsEmpty => '字幕会显示在这里。';
